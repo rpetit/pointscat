@@ -1,6 +1,7 @@
 import numpy as np
 
 from scipy.special import hankel1
+from scipy.linalg import svdvals
 
 
 def angle_to_vec(theta):
@@ -44,7 +45,7 @@ class PointScatteringProblem:
     def num_scatterers(self):
         return len(self.amplitudes)
 
-    def compute_foldy_matrix(self):
+    def compute_foldy_matrix(self, output=False):
         # TODO: write doc
         foldy_matrix = np.zeros((self.num_scatterers, self.num_scatterers), dtype='complex_')
         for i in range(self.num_scatterers):
@@ -52,11 +53,18 @@ class PointScatteringProblem:
                 if i == j:
                     foldy_matrix[i, j] = 1
                 else:
-                    foldy_matrix[i, j] = self.wave_number * green_function(self.wave_number,
-                                                                           self.locations[i],
-                                                                           self.locations[j])
+                    # TODO: test error self.wave_number**2 was self.wave_number before
+                    foldy_matrix[i, j] = self.wave_number**2 * green_function(self.wave_number,
+                                                                              self.locations[i],
+                                                                              self.locations[j])
 
         self.foldy_matrix = foldy_matrix
+
+        # TODO: refactor
+        if output:
+            smallest_sval = svdvals(foldy_matrix)[-1]
+            one_norm_minus_id = np.max(np.sum(np.abs(foldy_matrix - np.eye(self.num_scatterers)), axis=0))
+            return smallest_sval, one_norm_minus_id
 
     def solve_fold_system(self, incident_angle, born_approx=False):
         # TODO: write doc

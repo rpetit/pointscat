@@ -138,28 +138,28 @@ fig.colorbar(im, ax=axs[2, 1], fraction=0.046, pad=0.04)
 fig.subplots_adjust()
 plt.show()
 
-# # far field computation and plot
-# # TODO: find better way to plot, far field projection?
-# # TODO: plot far field under Born approximation
-# incident_angles = np.linspace(0, 2*np.pi, num_points)
-# observation_directions = np.linspace(0, 2*np.pi, num_points)
-# far_field_vals = point_scat.compute_far_field(incident_angles, observation_directions)
-# far_field = far_field_vals.reshape((num_points, num_points))
-#
-# fig, axs = plt.subplots(1, 2, figsize=(14, 7))
-# v_abs_max = np.max(np.abs(far_field))
-# vmin = -v_abs_max
-# vmax = v_abs_max
-#
-# im = axs[0].imshow(np.real(far_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
-# axs[0].axis('off')
-# axs[0].set_title('far field pattern (real part)')
-# fig.colorbar(im, ax=axs[0], fraction=0.046, pad=0.04)
-#
-# im = axs[1].imshow(np.imag(far_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
-# axs[1].axis('off')
-# axs[1].set_title('far field pattern (imag. part)')
-# fig.colorbar(im, ax=axs[1], fraction=0.046, pad=0.04)
-#
-# fig.subplots_adjust()
-# plt.show()
+# far field computation and plot
+# TODO: find better way to plot, far field projection?
+# TODO: plot far field under Born approximation
+incident_angles = np.linspace(0, 2*np.pi, num_points)
+observation_directions = np.linspace(0, 2*np.pi, num_points)
+far_field_vals = point_scat.compute_far_field(incident_angles, observation_directions)
+far_field = far_field_vals.reshape((num_points, num_points))
+
+fig, axs = plt.subplots(1, 2, figsize=(14, 7))
+v_abs_max = np.max(np.abs(far_field))
+vmin = -v_abs_max
+vmax = v_abs_max
+
+im = axs[0].imshow(np.real(far_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
+axs[0].axis('off')
+axs[0].set_title('far field pattern (real part)')
+fig.colorbar(im, ax=axs[0], fraction=0.046, pad=0.04)
+
+im = axs[1].imshow(np.imag(far_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
+axs[1].axis('off')
+axs[1].set_title('far field pattern (imag. part)')
+fig.colorbar(im, ax=axs[1], fraction=0.046, pad=0.04)
+
+fig.subplots_adjust()
+plt.show()
