@@ -1,1 +1,1 @@
-from .point_scattering import angle_to_vec, PointScatteringProblem
+from .forward_problem import angle_to_vec, PointScatteringProblem
