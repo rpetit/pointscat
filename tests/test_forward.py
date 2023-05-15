@@ -1,7 +1,7 @@
 import numpy as np
 
 
-from pointscat.point_scattering import green_function, PointScatteringProblem
+from pointscat.forward_problem import green_function, PointScatteringProblem
 
 
 def test_green_function():
