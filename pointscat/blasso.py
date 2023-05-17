@@ -1,13 +1,14 @@
 import numpy as np
+import jax.numpy as jnp
 
 from itertools import product
-from scipy.optimize import minimize
+from jax.scipy.optimize import minimize
 from celer import Lasso
 
 
 def frequency_grid(cutoff_frequency):
     """
-    List all integer-valued vectors with coordinates non greater (in absolute value) than the cutoff frequency
+    List all 2D integer-valued vectors whose coordinates are non greater than the cutoff frequency
 
     Parameters
     ----------
@@ -16,15 +17,43 @@ def frequency_grid(cutoff_frequency):
 
     Returns
     -------
-    np.array, shape (2*cutoff_frequency+1,2)
-        The list of all 2D frequency vectors whose infinity norm is non greater than cutoff_frequency
+    np.array, shape ((cutoff_frequency+1)**2,2)
+        The list of 2D frequency vectors
     """
 
-    # TODO: find better name
+    # TODO: find better name?
     assert isinstance(cutoff_frequency, int)
 
-    f_tab = np.arange(-cutoff_frequency, cutoff_frequency + 1)
+    f_tab = np.arange(cutoff_frequency + 1)
     return np.array([[f_1, f_2] for (f_1, f_2) in product(f_tab, f_tab)])
+
+
+def trigo_poly(x, frequencies, coefficients):
+    """
+    Evaluate the trigonometric polynomial defined by a set of frequencies and coefficients at a point x
+
+    Parameters
+    ----------
+    x: jnp.array, shape(2,)
+        The point at which to evaluate the trigonometric polynomial
+    frequencies: jnp.array, shape (N, 2)
+        The set of frequencies
+    coefficients: jnp.array, shape (2*N,)
+        The coefficients associated to each frequency. First N coefficients are for cosines, last N for sines
+
+    Returns
+    -------
+    jnp.float
+        Value of the trigonometric polynomial at x
+    """
+    # TODO: test
+    assert len(frequencies) * 2 == len(coefficients)
+
+    dot_prod_array = jnp.dot(frequencies, x)
+    res = jnp.sum(coefficients[:len(frequencies)] * jnp.cos(2*jnp.pi * dot_prod_array))
+    res += jnp.sum(coefficients[len(frequencies):] * jnp.sin(2*jnp.pi * dot_prod_array))
+
+    return res
 
 
 def find_argmax_grid(f, grid_size):
@@ -40,7 +69,7 @@ def find_argmax_grid(f, grid_size):
 
     Returns
     -------
-
+    TODO: write
     """
     # construct an array of grid_size * grid_size equi-spaced points on the torus TODO: use product instead of meshgrid?
     x_tab, y_tab = np.linspace(0, 1, grid_size + 1)[:-1], np.linspace(0, 1, grid_size + 1)[:-1]
@@ -60,10 +89,10 @@ def find_argmax_abs(f, grid_size):
     argmax_abs_grid = find_argmax_grid(abs_f, grid_size)
     sign = np.sign(f(argmax_abs_grid))
 
-    def sign_f(x):
+    def signed_f(x):
         return -sign * f(x)
 
-    res = minimize(sign_f, argmax_abs_grid, method='BFGS')  # TODO: use autodiff
+    res = minimize(signed_f, argmax_abs_grid, method='BFGS')  # TODO: use autodiff
 
     return res.x
 
@@ -120,8 +149,8 @@ class DiscreteMeasure:
         Returns
         -------
         np.array, shape (2N,)
-            Fourier coefficients of the measure at each frequency. The first N coordinates are the real parts of the
-            coefficients, and the last N the imaginary parts.
+            Fourier coefficients of the measure at each frequency. The 2*N-th coordinate is the real part of the N-th
+            Fourier coefficient, and the 2*N+1-th coordinate the imaginary part
         """
         # TODO: check that frequencies have integer coordinates?
         assert frequencies.ndim == 2 and frequencies.shape[1] == 2
@@ -129,17 +158,14 @@ class DiscreteMeasure:
         ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(-2*np.pi * dot_prod_array), axis=1)
         ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(-2*np.pi * dot_prod_array), axis=1)
 
-        return np.hstack([ft_real, ft_imag])
+        return np.concatenate([ft_real, ft_imag])
 
     def fit_weights(self, frequencies, observations, reg_param, tol_factor=1e-4):
         # TODO: write doc
         # TODO: remove spikes with amplitude below some threshold
-        measurement_mat_real = np.array([[np.cos(-2*np.pi * np.dot(frequencies[i], self.locations[j]))
-                                          for j in range(self.num_spikes)] for i in range(len(frequencies))])
-
-        measurement_mat_imag = np.array([[np.sin(-2*np.pi * np.dot(frequencies[i], self.locations[j]))
-                                          for j in range(self.num_spikes)] for i in range(len(frequencies))])
-
+        dot_prod_array = np.dot(frequencies, self.locations.T)
+        measurement_mat_real = np.cos(2*np.pi * dot_prod_array)
+        measurement_mat_imag = np.sin(2*np.pi * dot_prod_array)
         measurement_mat = np.vstack([measurement_mat_real, measurement_mat_imag])
 
         tol = tol_factor * np.linalg.norm(observations) ** 2 / observations.size
