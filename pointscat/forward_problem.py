@@ -92,7 +92,7 @@ class PointScatteringProblem:
         x: np.array, shape (N, 2)
             The list of points at which the total field should be evaluated
         born_approx: bool
-            Whether or not to use Born approximation, defaut False (no approximation)
+            Whether to use Born approximation, defaut False (no approximation)
 
         Returns
         -------
@@ -122,10 +122,10 @@ class PointScatteringProblem:
         ----------
         incident_angles: np.array, shape (N,)
             The list of incident angles
-        x: np.array, shape (N,)
+        observation_directions: np.array, shape (N,)
             The list of observation directions
         born_approx: bool
-            Whether or not to use Born approximation, defaut False (no approximation)
+            Whether to use Born approximation, defaut False (no approximation)
 
         Returns
         -------
