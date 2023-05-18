@@ -1,8 +1,8 @@
 import numpy as np
 import jax.numpy as jnp
+import jaxopt
 
 from itertools import product
-from jax.scipy.optimize import minimize
 from celer import Lasso
 
 
@@ -83,18 +83,21 @@ def find_argmax_grid(f, grid_size):
 
 def find_argmax_abs(f, grid_size):
     # TODO: write doc
+    # TODO: investigate why JAX is much slower to optimize than scipy
+    # TODO: implement direct computation of the gradient
     def abs_f(x):
         return np.abs(f(x))
 
     argmax_abs_grid = find_argmax_grid(abs_f, grid_size)
-    sign = np.sign(f(argmax_abs_grid))
+    sign = jnp.sign(f(argmax_abs_grid))
 
     def signed_f(x):
         return -sign * f(x)
 
-    res = minimize(signed_f, argmax_abs_grid, method='BFGS')  # TODO: use autodiff
+    solver = jaxopt.BFGS(signed_f)
+    params, state = solver.run(argmax_abs_grid)
 
-    return res.x
+    return params
 
 
 # TODO: deal with spikes at same location
@@ -112,16 +115,37 @@ class DiscreteMeasure:
         The weight associated to each spike. None if zero measure
     """
 
+    # TODO: write doc about setters and getters
     def __init__(self, locations, amplitudes):
-        assert locations.ndim == 2 and locations.shape[1] == 2
-        assert amplitudes.ndim == 1 and len(locations) == len(amplitudes)
+        assert amplitudes.ndim == 1
+        assert locations.shape == (len(amplitudes), 2)
+
+        self._num_spikes = len(amplitudes)
 
         self.locations = locations
         self.amplitudes = amplitudes
 
     @property
     def num_spikes(self):
-        return len(self.amplitudes)
+        return self._num_spikes
+
+    @property
+    def amplitudes(self):
+        return self._amplitudes
+
+    @amplitudes.setter
+    def amplitudes(self, a):
+        assert a.shape == (self.num_spikes,)
+        self._amplitudes = a
+
+    @property
+    def locations(self):
+        return self._locations
+
+    @locations.setter
+    def locations(self, x):
+        assert x.shape == (self.num_spikes, 2)
+        self._locations = np.mod(x, 1)  # we work on the torus and hence always keep locations between 0 and 1
 
     def add_spike(self, new_location):
         """
@@ -132,6 +156,7 @@ class DiscreteMeasure:
         new_location: np.array, shape (2,)
             Location of the new spike
         """
+        self._num_spikes += 1
         self.locations = np.vstack((self.locations, new_location))
         self.amplitudes = np.append(self.amplitudes, 0)
 
@@ -155,8 +180,8 @@ class DiscreteMeasure:
         # TODO: check that frequencies have integer coordinates?
         assert frequencies.ndim == 2 and frequencies.shape[1] == 2
         dot_prod_array = np.dot(frequencies, self.locations.T)
-        ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(-2*np.pi * dot_prod_array), axis=1)
-        ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(-2*np.pi * dot_prod_array), axis=1)
+        ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(2*np.pi * dot_prod_array), axis=1)
+        ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(2*np.pi * dot_prod_array), axis=1)
 
         return np.concatenate([ft_real, ft_imag])
 
@@ -178,22 +203,31 @@ class DiscreteMeasure:
     def perform_sliding(self, frequencies, observations, reg_param):
         # TODO: implement spike merging
         # TODO: test
+        num_spikes = self.num_spikes
+
         def sliding_obj(x):
             # parse input vector
-            amplitudes = x[:self.num_spikes]
-            locations = np.reshape(x[self.num_spikes:], (self.num_spikes, 2))
+            amplitudes = x[:num_spikes]
+            locations = jnp.reshape(x[num_spikes:], (num_spikes, 2))
 
-            # construct measure and compute Fourier transform
-            measure = DiscreteMeasure(locations, amplitudes)
-            ft = measure.compute_fourier_transform(frequencies)
+            # compute Fourier transform
+            dot_prod_array = jnp.dot(frequencies, locations.T)
+            ft_real = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.cos(2*jnp.pi * dot_prod_array), axis=1)
+            ft_imag = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.sin(2*jnp.pi * dot_prod_array), axis=1)
+            ft = jnp.concatenate([ft_real, ft_imag])
 
-            return np.sum(ft - observations)**2 / 2 + reg_param * np.sum(np.abs(amplitudes))
+            return jnp.sum((ft - observations)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
-        x_0 = np.concatenate([self.amplitudes, self.locations.flatten()])  # vector of initial parameters
-        res = minimize(sliding_obj, x_0, method='BFGS')
+        # vector of initial parameters
+        # TODO: fix ugly conversion
+        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float32'),
+                               jnp.array(self.locations.flatten(), dtype='float32')])
 
-        new_amplitudes = res.x[:self.num_spikes]
-        new_locations = np.reshape(res.x[self.num_spikes:], (self.num_spikes, 2))
+        solver = jaxopt.BFGS(sliding_obj)
+        params, state = solver.run(x_0)
+
+        new_amplitudes = params[:self.num_spikes]
+        new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
         self.amplitudes = new_amplitudes
         self.locations = new_locations
 
