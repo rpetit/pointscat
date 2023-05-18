@@ -1,14 +1,14 @@
 import numpy as np
 
-from pointscat.blasso import frequency_grid, find_argmax_grid, find_argmax_abs, DiscreteMeasure, zero_measure
+from pointscat.blasso import *
 
 
 def test_frequency_grid():
     cutoff_frequency = 2
     frequencies = frequency_grid(cutoff_frequency)
 
-    assert frequencies.shape == ((2*cutoff_frequency+1)**2, 2)
-    np.testing.assert_array_equal(frequencies[0], np.array([-2, -2]))
+    assert frequencies.shape == ((cutoff_frequency+1)**2, 2)
+    np.testing.assert_array_equal(frequencies[0], np.array([0, 0]))
     np.testing.assert_array_equal(frequencies[-1], np.array([2, 2]))
 
 
@@ -39,12 +39,14 @@ def test_discrete_measure():
     assert ft.shape == (4,)
     assert np.allclose(ft, 0)
 
-    measure = DiscreteMeasure(np.array([[0, 0]]), np.array([1]))
+    measure = DiscreteMeasure(np.array([[0, 1]]), np.array([1]))
     frequencies = np.array([[1, 1], [1, -1]])
     ft = measure.compute_fourier_transform(frequencies)
     assert ft.shape == (4,)
-    assert ft[0] == ft[1] == 1
-    assert ft[2] == ft[3] == 0
+    assert np.isclose(ft[0], 1)
+    assert np.isclose(ft[1], 1)
+    assert np.isclose(ft[2], 0)
+    assert np.isclose(ft[3], 0)
 
 
 def test_fit_weights():
@@ -65,48 +67,57 @@ def test_fit_weights():
 
 
 def test_find_argmax():
-    # test grid search
+    frequencies = np.array([[0, 0], [1, 0], [1, 1]])
+    coefficients = np.array([-1, 0, -1, 0, 2, 0])
+
+    # test grid search (maximum of f should be 2, attained at (1/4,1/4))
     def f(x):
-        return np.cos(0.5 + 2 * np.pi * (x[0] + x[1])) - 1
+        return trigo_poly(x, frequencies, coefficients)
 
-    argmax = find_argmax_grid(f, 10)
-    assert f(argmax) > -0.01
+    # grid is not fine enough
+    argmax_1 = find_argmax_grid(f, 10)
+    assert f(argmax_1) < 2 - 1e-6
 
-    # test grid + local search
-    argmax_abs_1 = find_argmax_abs(f, 10)
-    assert np.abs(f(argmax_abs_1)) > 0.999
+    # grid is fine enough
+    argmax_2 = find_argmax_grid(f, 100)
+    assert f(argmax_2) > 2 - 1e-6
 
+    # test grid + local search (maximum of absolute value of f should be 4, attained at (3/4,1/4))
+    argmax_abs_1 = find_argmax_abs(f, 5)
+    assert np.abs(f(argmax_abs_1)) > 4 - 1e-6
+
+    # test that multiplying f by -1 does not change the result
     def g(x):
         return -f(x)
 
-    argmax_abs_2 = find_argmax_abs(g, 10)
+    argmax_abs_2 = find_argmax_abs(g, 5)
     assert np.abs(f(argmax_abs_1)) == np.abs(f(argmax_abs_2))
 
 
-# def test_sliding():
-#     locations = np.array([[0, 0]])
-#     amplitudes = np.array([1])
-#     measure = DiscreteMeasure(locations, amplitudes)
-#     cutoff_frequency = 5
-#     frequencies = frequency_grid(cutoff_frequency)
-#     observations = measure.compute_fourier_transform(frequencies)
-#
-#     # change the amplitude after the FT computation to be sure the sliding modifies it
-#     measure.amplitudes = np.array([0.95])
-#     measure.locations = np.array([[0, 0]])
-#
-#     reg_param = 1e-6
-#     measure.perform_sliding(frequencies, observations, reg_param)
-#     assert np.isclose(measure.amplitudes[0], 1)
-#     assert np.isclose(measure.locations[0, 0], 0, atol=1e-5)
-#     assert np.isclose(measure.locations[0, 1], 0, atol=1e-5)
-#
-#     # change the location after the FT computation to be sure the sliding modifies it
-#     measure.amplitudes = np.array([1])
-#     measure.locations = np.array([[0.01, 0]])
-#
-#     reg_param = 1e-6
-#     measure.perform_sliding(frequencies, observations, reg_param)
-#     assert np.isclose(measure.amplitudes[0], 1)
-#     assert np.isclose(measure.locations[0, 0], 0, atol=1e-5)
-#     assert np.isclose(measure.locations[0, 1], 0, atol=1e-5)
+def test_sliding():
+    locations = np.array([[0, 0]])
+    amplitudes = np.array([1])
+    measure = DiscreteMeasure(locations, amplitudes)
+    cutoff_frequency = 5
+    frequencies = frequency_grid(cutoff_frequency)
+    observations = measure.compute_fourier_transform(frequencies)
+
+    # change the amplitude after the FT computation to be sure the sliding modifies it
+    measure.amplitudes = np.array([0.95])
+    measure.locations = np.array([[0, 0]])
+
+    reg_param = 1e-6
+    measure.perform_sliding(frequencies, observations, reg_param)
+    assert np.isclose(measure.amplitudes[0], 1)
+    assert np.isclose(measure.locations[0, 0], 0)
+    assert np.isclose(measure.locations[0, 1], 0)
+
+    # change the location after the FT computation to be sure the sliding modifies it
+    measure.amplitudes = np.array([0.9])
+    measure.locations = np.array([[0.1, -0.1]])
+
+    reg_param = 1e-6
+    measure.perform_sliding(frequencies, observations, reg_param)
+    assert np.isclose(measure.amplitudes[0], 1)
+    assert np.isclose(measure.locations[0, 0], 0, atol=1e-5)
+    assert np.isclose(measure.locations[0, 1], 0, atol=1e-5)

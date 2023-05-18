@@ -1,13 +1,14 @@
 import numpy as np
+import jax.numpy as jnp
+import jaxopt
 
 from itertools import product
-from scipy.optimize import minimize
 from celer import Lasso
 
 
 def frequency_grid(cutoff_frequency):
     """
-    List all integer-valued vectors with coordinates non greater (in absolute value) than the cutoff frequency
+    List all 2D integer-valued vectors whose coordinates are non greater than the cutoff frequency
 
     Parameters
     ----------
@@ -16,15 +17,43 @@ def frequency_grid(cutoff_frequency):
 
     Returns
     -------
-    np.array, shape (2*cutoff_frequency+1,2)
-        The list of all 2D frequency vectors whose infinity norm is non greater than cutoff_frequency
+    np.array, shape ((cutoff_frequency+1)**2,2)
+        The list of 2D frequency vectors
     """
 
-    # TODO: find better name
+    # TODO: find better name?
     assert isinstance(cutoff_frequency, int)
 
-    f_tab = np.arange(-cutoff_frequency, cutoff_frequency + 1)
+    f_tab = np.arange(cutoff_frequency + 1)
     return np.array([[f_1, f_2] for (f_1, f_2) in product(f_tab, f_tab)])
+
+
+def trigo_poly(x, frequencies, coefficients):
+    """
+    Evaluate the trigonometric polynomial defined by a set of frequencies and coefficients at a point x
+
+    Parameters
+    ----------
+    x: jnp.array, shape(2,)
+        The point at which to evaluate the trigonometric polynomial
+    frequencies: jnp.array, shape (N, 2)
+        The set of frequencies
+    coefficients: jnp.array, shape (2*N,)
+        The coefficients associated to each frequency. First N coefficients are for cosines, last N for sines
+
+    Returns
+    -------
+    jnp.float
+        Value of the trigonometric polynomial at x
+    """
+    # TODO: test
+    assert len(frequencies) * 2 == len(coefficients)
+
+    dot_prod_array = jnp.dot(frequencies, x)
+    res = jnp.sum(coefficients[:len(frequencies)] * jnp.cos(2*jnp.pi * dot_prod_array))
+    res += jnp.sum(coefficients[len(frequencies):] * jnp.sin(2*jnp.pi * dot_prod_array))
+
+    return res
 
 
 def find_argmax_grid(f, grid_size):
@@ -40,7 +69,7 @@ def find_argmax_grid(f, grid_size):
 
     Returns
     -------
-
+    TODO: write
     """
     # construct an array of grid_size * grid_size equi-spaced points on the torus TODO: use product instead of meshgrid?
     x_tab, y_tab = np.linspace(0, 1, grid_size + 1)[:-1], np.linspace(0, 1, grid_size + 1)[:-1]
@@ -54,18 +83,21 @@ def find_argmax_grid(f, grid_size):
 
 def find_argmax_abs(f, grid_size):
     # TODO: write doc
+    # TODO: investigate why JAX is much slower to optimize than scipy
+    # TODO: implement direct computation of the gradient
     def abs_f(x):
         return np.abs(f(x))
 
     argmax_abs_grid = find_argmax_grid(abs_f, grid_size)
-    sign = np.sign(f(argmax_abs_grid))
+    sign = jnp.sign(f(argmax_abs_grid))
 
-    def sign_f(x):
+    def signed_f(x):
         return -sign * f(x)
 
-    res = minimize(sign_f, argmax_abs_grid, method='BFGS')  # TODO: use autodiff
+    solver = jaxopt.BFGS(signed_f)
+    params, state = solver.run(argmax_abs_grid)
 
-    return res.x
+    return params
 
 
 # TODO: deal with spikes at same location
@@ -83,16 +115,37 @@ class DiscreteMeasure:
         The weight associated to each spike. None if zero measure
     """
 
+    # TODO: write doc about setters and getters
     def __init__(self, locations, amplitudes):
-        assert locations.ndim == 2 and locations.shape[1] == 2
-        assert amplitudes.ndim == 1 and len(locations) == len(amplitudes)
+        assert amplitudes.ndim == 1
+        assert locations.shape == (len(amplitudes), 2)
+
+        self._num_spikes = len(amplitudes)
 
         self.locations = locations
         self.amplitudes = amplitudes
 
     @property
     def num_spikes(self):
-        return len(self.amplitudes)
+        return self._num_spikes
+
+    @property
+    def amplitudes(self):
+        return self._amplitudes
+
+    @amplitudes.setter
+    def amplitudes(self, a):
+        assert a.shape == (self.num_spikes,)
+        self._amplitudes = a
+
+    @property
+    def locations(self):
+        return self._locations
+
+    @locations.setter
+    def locations(self, x):
+        assert x.shape == (self.num_spikes, 2)
+        self._locations = np.mod(x, 1)  # we work on the torus and hence always keep locations between 0 and 1
 
     def add_spike(self, new_location):
         """
@@ -103,6 +156,7 @@ class DiscreteMeasure:
         new_location: np.array, shape (2,)
             Location of the new spike
         """
+        self._num_spikes += 1
         self.locations = np.vstack((self.locations, new_location))
         self.amplitudes = np.append(self.amplitudes, 0)
 
@@ -120,26 +174,23 @@ class DiscreteMeasure:
         Returns
         -------
         np.array, shape (2N,)
-            Fourier coefficients of the measure at each frequency. The first N coordinates are the real parts of the
-            coefficients, and the last N the imaginary parts.
+            Fourier coefficients of the measure at each frequency. The 2*N-th coordinate is the real part of the N-th
+            Fourier coefficient, and the 2*N+1-th coordinate the imaginary part
         """
         # TODO: check that frequencies have integer coordinates?
         assert frequencies.ndim == 2 and frequencies.shape[1] == 2
         dot_prod_array = np.dot(frequencies, self.locations.T)
-        ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(-2*np.pi * dot_prod_array), axis=1)
-        ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(-2*np.pi * dot_prod_array), axis=1)
+        ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(2*np.pi * dot_prod_array), axis=1)
+        ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(2*np.pi * dot_prod_array), axis=1)
 
-        return np.hstack([ft_real, ft_imag])
+        return np.concatenate([ft_real, ft_imag])
 
     def fit_weights(self, frequencies, observations, reg_param, tol_factor=1e-4):
         # TODO: write doc
         # TODO: remove spikes with amplitude below some threshold
-        measurement_mat_real = np.array([[np.cos(-2*np.pi * np.dot(frequencies[i], self.locations[j]))
-                                          for j in range(self.num_spikes)] for i in range(len(frequencies))])
-
-        measurement_mat_imag = np.array([[np.sin(-2*np.pi * np.dot(frequencies[i], self.locations[j]))
-                                          for j in range(self.num_spikes)] for i in range(len(frequencies))])
-
+        dot_prod_array = np.dot(frequencies, self.locations.T)
+        measurement_mat_real = np.cos(2*np.pi * dot_prod_array)
+        measurement_mat_imag = np.sin(2*np.pi * dot_prod_array)
         measurement_mat = np.vstack([measurement_mat_real, measurement_mat_imag])
 
         tol = tol_factor * np.linalg.norm(observations) ** 2 / observations.size
@@ -152,22 +203,31 @@ class DiscreteMeasure:
     def perform_sliding(self, frequencies, observations, reg_param):
         # TODO: implement spike merging
         # TODO: test
+        num_spikes = self.num_spikes
+
         def sliding_obj(x):
             # parse input vector
-            amplitudes = x[:self.num_spikes]
-            locations = np.reshape(x[self.num_spikes:], (self.num_spikes, 2))
+            amplitudes = x[:num_spikes]
+            locations = jnp.reshape(x[num_spikes:], (num_spikes, 2))
 
-            # construct measure and compute Fourier transform
-            measure = DiscreteMeasure(locations, amplitudes)
-            ft = measure.compute_fourier_transform(frequencies)
+            # compute Fourier transform
+            dot_prod_array = jnp.dot(frequencies, locations.T)
+            ft_real = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.cos(2*jnp.pi * dot_prod_array), axis=1)
+            ft_imag = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.sin(2*jnp.pi * dot_prod_array), axis=1)
+            ft = jnp.concatenate([ft_real, ft_imag])
 
-            return np.sum(ft - observations)**2 / 2 + reg_param * np.sum(np.abs(amplitudes))
+            return jnp.sum((ft - observations)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
-        x_0 = np.concatenate([self.amplitudes, self.locations.flatten()])  # vector of initial parameters
-        res = minimize(sliding_obj, x_0, method='BFGS')
+        # vector of initial parameters
+        # TODO: fix ugly conversion
+        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float32'),
+                               jnp.array(self.locations.flatten(), dtype='float32')])
 
-        new_amplitudes = res.x[:self.num_spikes]
-        new_locations = np.reshape(res.x[self.num_spikes:], (self.num_spikes, 2))
+        solver = jaxopt.BFGS(sliding_obj)
+        params, state = solver.run(x_0)
+
+        new_amplitudes = params[:self.num_spikes]
+        new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
         self.amplitudes = new_amplitudes
         self.locations = new_locations
 
