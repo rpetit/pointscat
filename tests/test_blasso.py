@@ -1,6 +1,6 @@
 import numpy as np
 
-from pointscat.blasso import *
+from pointscat.inverse_problem import *
 
 
 def test_frequency_grid():

@@ -134,15 +134,16 @@ class PointScatteringProblem:
         """
         # TODO: allow to pass an array with shape (2,) as input for x?
         assert incident_angles.ndim == 1 and observation_directions.ndim == 1
+        assert len(incident_angles) == len(observation_directions)
 
-        n, m = len(incident_angles), len(observation_directions)
-        res = np.zeros((n, m), dtype='complex_')
+        n = len(incident_angles)
+        res = np.zeros(n, dtype='complex_')
 
         for i in range(n):
             foldy_solution = self.solve_fold_system(incident_angles[i], born_approx=born_approx)
-            for j in range(m):
-                for k in range(self.num_scatterers):
-                    dot_aux = np.dot(angle_to_vec(observation_directions[j]), self.locations[k])
-                    res[i, j] += self.amplitudes[k] * np.exp(-1j * self.wave_number * dot_aux) * foldy_solution[k]
+
+            for k in range(self.num_scatterers):
+                dot_aux = np.dot(angle_to_vec(observation_directions[i]), self.locations[k])
+                res[i] += self.amplitudes[k] * np.exp(-1j * self.wave_number * dot_aux) * foldy_solution[k]
 
         return res

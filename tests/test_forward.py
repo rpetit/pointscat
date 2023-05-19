@@ -53,7 +53,7 @@ def test_point_scattering_problem():
     far_field = scat_prob.compute_far_field(incident_angles, observation_directions)
 
     assert np.iscomplexobj(far_field)
-    assert far_field.shape == (1, 1)
-    assert far_field[0, 0] == np.dot(amplitudes, foldy_sol)  # check expression of far field at 0 with incident angle
+    assert far_field.shape == (1,)
+    assert far_field[0] == np.dot(amplitudes, foldy_sol)  # check expression of far field at 0 with incident angle
 
     # TODO: find clever test for Born approximation

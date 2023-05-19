@@ -58,6 +58,7 @@ aux = wave_number ** 2 * num_scatterers * np.max(amplitudes) / (4 * np.pi)
 th_bound_grid = aux * (aux / min_sep_dist_grid) / (1 - aux / min_sep_dist_grid)
 
 # plot relative error with respect to minimal separation distance
+# TODO: fix because of change in compute_far_field
 fig, axs = plt.subplots(3, 1, figsize=(7, 21))
 
 axs[0].scatter(min_sep_dist_tab, rel_err_tab, marker='.')

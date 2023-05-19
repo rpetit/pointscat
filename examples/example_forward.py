@@ -141,6 +141,7 @@ plt.show()
 # far field computation and plot
 # TODO: find better way to plot, far field projection?
 # TODO: plot far field under Born approximation
+# TODO: fix because of change in compute_far_field
 incident_angles = np.linspace(0, 2*np.pi, num_points)
 observation_directions = np.linspace(0, 2*np.pi, num_points)
 far_field_vals = point_scat.compute_far_field(incident_angles, observation_directions)

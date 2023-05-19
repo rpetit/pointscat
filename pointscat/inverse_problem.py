@@ -202,7 +202,6 @@ class DiscreteMeasure:
 
     def perform_sliding(self, frequencies, observations, reg_param):
         # TODO: implement spike merging
-        # TODO: test
         num_spikes = self.num_spikes
 
         def sliding_obj(x):
@@ -244,3 +243,21 @@ def zero_measure():
     locations = np.empty((0, 2))
     amplitudes = np.empty(0)
     return DiscreteMeasure(locations, amplitudes)
+
+
+def solve_blasso(frequencies, observations, reg_param, num_iter, grid_size=100):
+    measure = zero_measure()
+
+    for i in range(num_iter):
+        residual = measure.compute_fourier_transform(frequencies) - observations
+
+        def eta(x):
+            return trigo_poly(x, frequencies, residual)
+
+        new_location = find_argmax_abs(eta, grid_size)
+        measure.add_spike(new_location)
+
+        measure.fit_weights(frequencies, observations, reg_param)
+        measure.perform_sliding(frequencies, observations, reg_param)
+
+    return measure
