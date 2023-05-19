@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pointscat.inverse_problem import frequency_grid, trigo_poly, DiscreteMeasure, solve_blasso
+from pointscat.inverse_problem import unif_sample_disk, trigo_poly, DiscreteMeasure, solve_blasso
 
 
 plt.rcParams.update({
@@ -17,10 +17,17 @@ np.random.seed(0)
 # TODO: test stopping criterion based on dual gap
 
 amplitudes = np.array([1, 2])
-locations = np.array([[0.45, 0.5], [0.55, 0.5]])
+locations = np.array([[-0.1, 0], [0.1, 0]])
 unknown_measure = DiscreteMeasure(locations, amplitudes)
 
-frequencies = frequency_grid(2)
+print("true amplitudes:")
+print(amplitudes)
+print("true locations:")
+print(locations)
+
+num_frequencies = 20
+cutoff_frequency = 100
+frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 observations = unknown_measure.compute_fourier_transform(frequencies)
 fourier_series = lambda x: trigo_poly(x, frequencies, observations)
 
@@ -31,12 +38,20 @@ noisy_fourier_series = lambda x: trigo_poly(x, frequencies, noisy_observations)
 
 reg_param = 0.25 * np.sqrt(2 * np.log(len(observations))) * std_noise
 num_iter = 2
-estimated_measure = solve_blasso(frequencies, observations, reg_param, num_iter)
+box_size = 2
+estimated_measure = solve_blasso(frequencies, observations, reg_param, num_iter, box_size)
 
-tab = np.linspace(0, 1, 100)
+print("estimated amplitudes:")
+print(estimated_measure.amplitudes)
+print("estimated locations:")
+print(estimated_measure.locations)
+
+tab = np.linspace(-box_size/2, box_size/2, 100)
 grid = np.array([[[tab[i], tab[j]] for j in range(len(tab))] for i in range(len(tab))])
 f_grid = np.array([[fourier_series(grid[i, j]) for j in range(len(tab))] for i in range(len(tab))])
+f_grid = f_grid - np.mean(f_grid)
 noisy_f_grid = np.array([[noisy_fourier_series(grid[i, j]) for j in range(len(tab))] for i in range(len(tab))])
+noisy_f_grid = noisy_f_grid - np.mean(noisy_f_grid)
 
 v_abs_max = max(np.max(np.abs(f_grid)), np.max(np.abs(noisy_f_grid)))
 
@@ -60,8 +75,8 @@ stemlines.set_color('red')
 markerline.set_color('red')
 baseline.set_linestyle('none')
 
-ax.set_xlim(-0.1, 1.1)
-ax.set_ylim(-0.1, 1.1)
+ax.set_xlim(-1.1*box_size/2, 1.1*box_size/2)
+ax.set_ylim(-1.1*box_size/2, 1.1*box_size/2)
 ax.set_title('Unknown and \nestimated measures')
 
 ax = fig.add_subplot(3, 1, 2)
