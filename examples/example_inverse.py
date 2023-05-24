@@ -7,14 +7,14 @@ from pointscat.inverse_problem import unif_sample_disk, DiscreteMeasure, solve_b
 np.random.seed(0)
 
 # setting problem
-amplitudes = np.array([1, 1])
-locations = np.array([[-0.3, -0.7], [0.2, 0.6]])
-wave_number = 0.5
+amplitudes = 1 * np.array([1, 1, 1])
+locations = 0.5 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
+wave_number = 1
 point_scat = PointScatteringProblem(wave_number, amplitudes, locations)
 
 # far field computation
-box_size = 2  # locations should belong to (-# box_size/2,box_size/2)
-num_frequencies = 10000
+box_size = 3 * 10  # locations should belong to (-# box_size/2,box_size/2)
+num_frequencies = 100
 cutoff_frequency = 2 * wave_number
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 
@@ -44,7 +44,7 @@ print(np.linalg.norm(far_field - far_field_born) / np.linalg.norm(far_field))
 
 # computation of BLASSO estimator
 reg_param = 0.1
-num_iter = 2
+num_iter = 3
 
 obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
 estimated_measure = solve_blasso(frequencies, obs, reg_param, num_iter, box_size)

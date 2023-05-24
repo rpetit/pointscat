@@ -25,8 +25,8 @@ print(amplitudes)
 print("true locations:")
 print(locations)
 
-num_frequencies = 20
-cutoff_frequency = 100
+num_frequencies = 10
+cutoff_frequency = 50
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 observations = unknown_measure.compute_fourier_transform(frequencies)
 fourier_series = lambda x: trigo_poly(x, frequencies, observations)

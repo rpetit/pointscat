@@ -40,17 +40,16 @@ def trigo_poly(x, frequencies, coefficients):
     ----------
     x: jnp.array, shape(2,)
         The point at which to evaluate the trigonometric polynomial
-    frequencies: jnp.array, shape (N, 2)
+    frequencies: jnp.array, shape (M, 2)
         The set of frequencies
-    coefficients: jnp.array, shape (2*N,)
-        The coefficients associated to each frequency. First N coefficients are for cosines, last N for sines
+    coefficients: jnp.array, shape (2*M,)
+        The coefficients associated to each frequency. First M coefficients are for cosines, last M for sines
 
     Returns
     -------
     jnp.float
         Value of the trigonometric polynomial at x
     """
-    # TODO: test
     assert len(frequencies) * 2 == len(coefficients)
 
     dot_prod_array = jnp.dot(frequencies, x)
@@ -106,6 +105,36 @@ def find_argmax_abs(f, box_size, grid_size):
     return params
 
 
+def compute_fourier_transform(locations, amplitudes, frequencies):
+    """
+    Compute the Fourier transform of a discrete measure at a given set of frequencies.
+
+    To avoid dealing with complex numbers, we output the real and imaginary parts of the Fourier coefficients
+
+    Parameters
+    ----------
+    locations: np.array or jnp.array, shape (N, 2)
+        Locations of the spikes
+    amplitudes: np.array or jnp.array, shape (M,)
+        Weights associated to each spike
+    frequencies: np.array or jnp.array, shape (M, 2)
+        Frequencies at which the Fourier transform is computed
+
+    Returns
+    -------
+    jnp.array, shape (2M,)
+        Fourier coefficients of the measure at each frequency. The 2*M-th coordinate is the real part of the M-th
+        Fourier coefficient, and the 2*M+1-th coordinate the imaginary part
+    """
+    # TODO: check that frequencies have integer coordinates?
+    assert frequencies.ndim == 2 and frequencies.shape[1] == 2
+    dot_prod_array = jnp.dot(frequencies, locations.T)
+    ft_real = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.cos(dot_prod_array), axis=1)
+    ft_imag = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.sin(dot_prod_array), axis=1)
+
+    return jnp.concatenate([ft_real, ft_imag])
+
+
 # TODO: deal with spikes at same location
 # TODO: deal with representation of locations (points on the torus)
 # TODO: deal with complex amplitudes (sklearn and celer do not like complex numbers)?
@@ -147,28 +176,20 @@ class DiscreteMeasure:
 
     def compute_fourier_transform(self, frequencies):
         """
-        Compute the Fourier transform of a measure at a given set of frequencies.
-
-        To avoid dealing with complex numbers, we output the real and imaginary parts of the Fourier coefficients
+        See compute_fourier_transform
 
         Parameters
         ----------
-        frequencies: np.array, shape (N, 2)
+        frequencies: np.array or jnp.array, shape (M, 2)
             Frequencies at which the Fourier transform is computed
 
         Returns
         -------
-        np.array, shape (2N,)
-            Fourier coefficients of the measure at each frequency. The 2*N-th coordinate is the real part of the N-th
-            Fourier coefficient, and the 2*N+1-th coordinate the imaginary part
+        jnp.array, shape (2M,)
+            Fourier coefficients of the measure at each frequency. The 2*M-th coordinate is the real part of the M-th
+            Fourier coefficient, and the 2*M+1-th coordinate the imaginary part
         """
-        # TODO: check that frequencies have integer coordinates?
-        assert frequencies.ndim == 2 and frequencies.shape[1] == 2
-        dot_prod_array = np.dot(frequencies, self.locations.T)
-        ft_real = np.sum(self.amplitudes[np.newaxis, :] * np.cos(dot_prod_array), axis=1)
-        ft_imag = np.sum(self.amplitudes[np.newaxis, :] * np.sin(dot_prod_array), axis=1)
-
-        return np.concatenate([ft_real, ft_imag])
+        return compute_fourier_transform(self.locations, self.amplitudes, frequencies)
 
     def fit_weights(self, frequencies, observations, reg_param, tol_factor=1e-4):
         # TODO: write doc
@@ -194,12 +215,7 @@ class DiscreteMeasure:
             # parse input vector
             amplitudes = x[:num_spikes]
             locations = jnp.reshape(x[num_spikes:], (num_spikes, 2))
-
-            # compute Fourier transform
-            dot_prod_array = jnp.dot(frequencies, locations.T)
-            ft_real = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.cos(dot_prod_array), axis=1)
-            ft_imag = jnp.sum(amplitudes[jnp.newaxis, :] * jnp.sin(dot_prod_array), axis=1)
-            ft = jnp.concatenate([ft_real, ft_imag])
+            ft = compute_fourier_transform(locations, amplitudes, frequencies)
 
             return jnp.sum((ft - observations)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
