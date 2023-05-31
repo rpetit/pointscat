@@ -202,7 +202,9 @@ class DiscreteMeasure:
         tol = tol_factor * np.linalg.norm(observations) ** 2 / observations.size
 
         lasso = Lasso(alpha=reg_param/observations.size, fit_intercept=False, tol=tol)
-        lasso.fit(measurement_mat, observations)
+        # TODO: investigate why setting jax_enable_x64 to True raises a "buffer source array is read-only" error if
+        # observations is not converted to numpy array
+        lasso.fit(measurement_mat, np.array(observations))
 
         self.amplitudes = lasso.coef_
 

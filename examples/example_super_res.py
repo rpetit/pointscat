@@ -31,7 +31,7 @@ frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 observations = unknown_measure.compute_fourier_transform(frequencies)
 fourier_series = lambda x: trigo_poly(x, frequencies, observations)
 
-std_noise = 1.0
+std_noise = 0.1
 noise = np.random.normal(0, std_noise, size=observations.shape)
 noisy_observations = observations + noise
 noisy_fourier_series = lambda x: trigo_poly(x, frequencies, noisy_observations)

@@ -8,13 +8,13 @@ np.random.seed(0)
 
 # setting problem
 amplitudes = 1 * np.array([1, 1, 1])
-locations = 0.5 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
+locations = 3 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
 wave_number = 1
 point_scat = PointScatteringProblem(wave_number, amplitudes, locations)
 
 # far field computation
 box_size = 3 * 10  # locations should belong to (-# box_size/2,box_size/2)
-num_frequencies = 100
+num_frequencies = 10000
 cutoff_frequency = 2 * wave_number
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 

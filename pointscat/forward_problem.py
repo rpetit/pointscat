@@ -29,6 +29,31 @@ def green_function(wave_number, x, y):
     return 1j/4 * hankel1(0, wave_number * np.linalg.norm(x-y))
 
 
+def compute_foldy_matrix(locations, amplitudes, wave_number, output=False):
+    # TODO: write doc
+    num_scatterers = len(amplitudes)
+    assert amplitudes.ndim == 1 and locations.shape == (num_scatterers, 2)
+
+    foldy_matrix = np.zeros((num_scatterers, num_scatterers), dtype='complex_')
+    for i in range(num_scatterers):
+        for j in range(num_scatterers):
+            if i == j:
+                foldy_matrix[i, j] = 1
+            else:
+                # TODO: test error self.wave_number**2 was self.wave_number before
+                foldy_matrix[i, j] = wave_number**2 * green_function(wave_number,
+                                                                     locations[i],
+                                                                     locations[j])
+
+    foldy_matrix = foldy_matrix
+
+    # TODO: refactor
+    if output:
+        smallest_sval = svdvals(foldy_matrix)[-1]
+        one_norm_minus_id = np.max(np.sum(np.abs(foldy_matrix - np.eye(num_scatterers)), axis=0))
+        return smallest_sval, one_norm_minus_id
+
+
 class PointScatteringProblem:
 
     def __init__(self, wave_number, amplitudes, locations):

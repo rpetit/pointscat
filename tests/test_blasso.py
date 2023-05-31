@@ -3,6 +3,8 @@ import numpy as np
 from pointscat.inverse_problem import unif_sample_disk, trigo_poly, find_argmax_abs, find_argmax_grid
 from pointscat.inverse_problem import DiscreteMeasure, zero_measure
 
+from jax import config
+config.update("jax_enable_x64", True)
 
 # fix random feed for frequency sampling
 np.random.seed(0)
@@ -59,12 +61,11 @@ def test_discrete_measure():
     measure = DiscreteMeasure(np.array([[0, 1]]), np.array([2]))
     frequencies = np.array([[np.pi/2, np.pi/2], [np.pi/2, -np.pi/2]])
     ft = measure.compute_fourier_transform(frequencies)
-    atol = 1e-7  # TODO: investigate if atol=1e-8 fails because of jax using float32
     assert ft.shape == (4,)
-    assert np.isclose(ft[0], 0, atol=atol)
-    assert np.isclose(ft[1], 0, atol=atol)
-    assert np.isclose(ft[2], 2, atol=atol)
-    assert np.isclose(ft[3], -2, atol=atol)
+    assert np.isclose(ft[0], 0)
+    assert np.isclose(ft[1], 0)
+    assert np.isclose(ft[2], 2)
+    assert np.isclose(ft[3], -2)
 
 
 def test_fit_weights():
