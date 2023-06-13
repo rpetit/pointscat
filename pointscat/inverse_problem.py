@@ -5,6 +5,12 @@ import jaxopt
 from itertools import product
 from celer import Lasso
 
+from .forward_problem import compute_far_field
+from .forward_problem import angle_to_vec
+
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 
 def unif_sample_disk(num_samples, radius):
     """
@@ -115,9 +121,9 @@ def compute_fourier_transform(locations, amplitudes, frequencies):
     ----------
     locations: np.array or jnp.array, shape (N, 2)
         Locations of the spikes
-    amplitudes: np.array or jnp.array, shape (M,)
+    amplitudes: array, shape (M,)
         Weights associated to each spike
-    frequencies: np.array or jnp.array, shape (M, 2)
+    frequencies: array, shape (M, 2)
         Frequencies at which the Fourier transform is computed
 
     Returns
@@ -208,7 +214,7 @@ class DiscreteMeasure:
 
         self.amplitudes = lasso.coef_
 
-    def perform_sliding(self, frequencies, observations, reg_param, box_size):
+    def perform_sliding(self, frequencies, measurements, reg_param, box_size):
         # TODO: implement spike merging
         # TODO: write doc
         num_spikes = self.num_spikes
@@ -219,12 +225,42 @@ class DiscreteMeasure:
             locations = jnp.reshape(x[num_spikes:], (num_spikes, 2))
             ft = compute_fourier_transform(locations, amplitudes, frequencies)
 
-            return jnp.sum((ft - observations)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
+            return jnp.sum((ft - measurements)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
         # vector of initial parameters
         # TODO: fix ugly conversion
-        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float32'),
-                               jnp.array(self.locations.flatten(), dtype='float32')])
+        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float64'),
+                               jnp.array(self.locations.flatten(), dtype='float64')])
+
+        bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
+
+        solver = jaxopt.ScipyBoundedMinimize(fun=sliding_obj, method="l-bfgs-b")
+        params, state = solver.run(x_0, bounds=(-bounds, bounds))
+
+        new_amplitudes = params[:self.num_spikes]
+        new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
+        self.amplitudes = new_amplitudes
+        self.locations = new_locations
+
+    def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size):
+        # TODO: implement spike merging
+        # TODO: write doc
+        num_spikes = self.num_spikes
+
+        def sliding_obj(x):
+            # parse input vector
+            amplitudes = x[:num_spikes]
+            locations = jnp.reshape(x[num_spikes:], (num_spikes, 2))
+
+            far_field = compute_far_field(locations, amplitudes, wave_number, incident_angles, observation_directions)
+            image = jnp.concatenate([jnp.real(far_field), -jnp.imag(far_field)])  # TODO: fix ugly
+
+            return jnp.sum((image - measurements)**2) / 2
+
+        # vector of initial parameters
+        # TODO: fix ugly conversion
+        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float64'),
+                               jnp.array(self.locations.flatten(), dtype='float64')])
 
         bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
 
@@ -251,6 +287,7 @@ def zero_measure():
     return DiscreteMeasure(locations, amplitudes)
 
 
+# TODO implement stopping criterion
 def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_size=100):
     measure = zero_measure()
 

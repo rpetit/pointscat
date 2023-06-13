@@ -8,18 +8,20 @@ np.random.seed(0)
 
 # setting problem
 amplitudes = 1 * np.array([1, 1, 1])
-locations = 3 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
+locations = 0.15 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
 wave_number = 1
-point_scat = PointScatteringProblem(wave_number, amplitudes, locations)
+point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
 
 # far field computation
-box_size = 3 * 10  # locations should belong to (-# box_size/2,box_size/2)
-num_frequencies = 10000
+box_size = 0.2 * 10  # locations should belong to (-# box_size/2,box_size/2)
+num_frequencies = 100
 cutoff_frequency = 2 * wave_number
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 
-incident_angles = np.array([np.pi + np.angle(k[0]+1j*k[1]) - np.arccos(np.linalg.norm(k)/(2*wave_number)) for k in frequencies])
-observation_directions = np.array([np.angle(k[0]+1j*k[1]) + np.arccos(np.linalg.norm(k)/(2*wave_number)) for k in frequencies])
+incident_angles = np.array([np.pi + np.angle(k[0]+1j*k[1]) - np.arccos(np.linalg.norm(k)/(2*wave_number))
+                            for k in frequencies])
+observation_directions = np.array([np.angle(k[0]+1j*k[1]) + np.arccos(np.linalg.norm(k)/(2*wave_number))
+                                   for k in frequencies])
 
 far_field = point_scat.compute_far_field(incident_angles, observation_directions)
 far_field_born = point_scat.compute_far_field(incident_angles, observation_directions, born_approx=True)
@@ -42,18 +44,28 @@ print("difference between Fourier transform and far field pattern: {}".format(np
 print("relative L2 error between true far field and Born approximation:")
 print(np.linalg.norm(far_field - far_field_born) / np.linalg.norm(far_field))
 
-# computation of BLASSO estimator
-reg_param = 0.1
-num_iter = 3
-
-obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
-estimated_measure = solve_blasso(frequencies, obs, reg_param, num_iter, box_size)
-
 print("true amplitudes:")
 print(measure.amplitudes)
 
 print("true locations:")
 print(measure.locations)
+
+# computation of the BLASSO estimator under Born approx
+reg_param = 0.1
+num_iter = 3
+
+print("computation of the BLASSO estimator under Born approx...")
+obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
+estimated_measure = solve_blasso(frequencies, obs, reg_param, num_iter, box_size)
+
+print("estimated amplitudes:")
+print(estimated_measure.amplitudes)
+
+print("estimated locations:")
+print(estimated_measure.locations)
+
+print("nonlinear sliding...")
+estimated_measure.perform_nonlinear_sliding(incident_angles, observation_directions, obs, wave_number, box_size)
 
 print("estimated amplitudes:")
 print(estimated_measure.amplitudes)

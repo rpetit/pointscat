@@ -1,11 +1,28 @@
 import numpy as np
+import jax.numpy as jnp
 
-from scipy.special import hankel1
-from scipy.linalg import svdvals
+from .hankel import h0
+
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 
 def angle_to_vec(theta):
-    return np.array([np.cos(theta), np.sin(theta)])
+    """
+    Convert a real number into the corresponding unit norm 2d vector
+
+    Parameters
+    ----------
+    theta: float or array, shape (N,)
+
+    Returns
+    -------
+    float or array, shape (N, 2)
+    """
+    if jnp.isscalar(theta):
+        return jnp.array([jnp.cos(theta), jnp.sin(theta)])
+    else:
+        return jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=1)
 
 
 def green_function(wave_number, x, y):
@@ -26,85 +43,88 @@ def green_function(wave_number, x, y):
     complex
         Value of the Green function at (x, y)
     """
-    return 1j/4 * hankel1(0, wave_number * np.linalg.norm(x-y))
+    return 1j/4 * h0(wave_number * jnp.linalg.norm(x-y))
 
 
-def compute_foldy_matrix(locations, amplitudes, wave_number, output=False):
+def compute_foldy_matrix(locations, amplitudes, wave_number):
     # TODO: write doc
+    # TODO: test sign of off-diagonal coefficients (the minus was missing before, and tests still passed)
     num_scatterers = len(amplitudes)
     assert amplitudes.ndim == 1 and locations.shape == (num_scatterers, 2)
 
-    foldy_matrix = np.zeros((num_scatterers, num_scatterers), dtype='complex_')
-    for i in range(num_scatterers):
-        for j in range(num_scatterers):
-            if i == j:
-                foldy_matrix[i, j] = 1
-            else:
-                # TODO: test error self.wave_number**2 was self.wave_number before
-                foldy_matrix[i, j] = wave_number**2 * green_function(wave_number,
-                                                                     locations[i],
-                                                                     locations[j])
+    foldy_mat = jnp.array([[-wave_number**2 * green_function(wave_number, locations[i], locations[j]) if i != j else 1
+                            for j in range(num_scatterers)] for i in range(num_scatterers)], dtype='complex64')
 
-    foldy_matrix = foldy_matrix
+    return foldy_mat
 
-    # TODO: refactor
-    if output:
-        smallest_sval = svdvals(foldy_matrix)[-1]
-        one_norm_minus_id = np.max(np.sum(np.abs(foldy_matrix - np.eye(num_scatterers)), axis=0))
-        return smallest_sval, one_norm_minus_id
+
+def solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, born_approx=False):
+    """
+    Solve the Foldy system associated to a set of incident angles
+
+    Parameters
+    ----------
+    locations: array, shape (N, 2)
+        Locations of the scatterers
+    amplitudes: array, shape (N,)
+        Amplitude associated to each scatterer
+    wave_number: float
+        Wave number
+    incident_angles: array, shape (M,)
+        The set of angles defining the incident waves
+    born_approx: bool
+        Whether to use Born approximation
+
+    Returns
+    -------
+    array, shape (N,M)
+        The j-th column is the solution of the Foldy system associated to the incident wave defined by incident_angles[j]
+    """
+    # compute and inverse Foldy matrix
+    foldy_matrix = compute_foldy_matrix(locations, amplitudes, wave_number)
+    inv_foldy_matrix = jnp.linalg.inv(foldy_matrix)
+
+    # compute the matrix whose (i,j)-th coefficient is the inner product between locations[i] and incident_angles[j]
+    dot_prod = jnp.dot(locations, angle_to_vec(incident_angles).T)
+
+    # compute right hand side of Foldy system
+    right_hand_sides = jnp.exp(1j * wave_number * dot_prod)
+
+    if born_approx:
+        solutions = right_hand_sides
+    else:
+        solutions = jnp.dot(inv_foldy_matrix, right_hand_sides)
+
+    return solutions
+
+
+def compute_far_field(locations, amplitudes, wave_number, incident_angles, observations_directions, born_approx=False):
+    # TODO: write doc
+    foldy_sols = solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, born_approx)
+
+    # compute the matrix whose (i,j)-th coefficient is the inner product between locations[i]
+    # and observations_directions[j]
+    dot_prod = jnp.dot(locations, angle_to_vec(observations_directions).T)
+
+    return jnp.sum(amplitudes[:, jnp.newaxis] * jnp.exp(-1j * wave_number * dot_prod) * foldy_sols, axis=0)
 
 
 class PointScatteringProblem:
 
-    def __init__(self, wave_number, amplitudes, locations):
+    def __init__(self, locations, amplitudes, wave_number):
         # TODO: write doc
         assert len(amplitudes) == len(locations)
 
-        self.wave_number = wave_number
-        self.amplitudes = amplitudes
         self.locations = locations
-
-        self.foldy_matrix = None
+        self.amplitudes = amplitudes
+        self.wave_number = wave_number
 
     @property
     def num_scatterers(self):
         return len(self.amplitudes)
 
-    def compute_foldy_matrix(self, output=False):
-        # TODO: write doc
-        foldy_matrix = np.zeros((self.num_scatterers, self.num_scatterers), dtype='complex_')
-        for i in range(self.num_scatterers):
-            for j in range(self.num_scatterers):
-                if i == j:
-                    foldy_matrix[i, j] = 1
-                else:
-                    # TODO: test error self.wave_number**2 was self.wave_number before
-                    foldy_matrix[i, j] = self.wave_number**2 * green_function(self.wave_number,
-                                                                              self.locations[i],
-                                                                              self.locations[j])
-
-        self.foldy_matrix = foldy_matrix
-
-        # TODO: refactor
-        if output:
-            smallest_sval = svdvals(foldy_matrix)[-1]
-            one_norm_minus_id = np.max(np.sum(np.abs(foldy_matrix - np.eye(self.num_scatterers)), axis=0))
-            return smallest_sval, one_norm_minus_id
-
-    def solve_fold_system(self, incident_angle, born_approx=False):
-        # TODO: write doc
-        if not born_approx and self.foldy_matrix is None:
-            self.compute_foldy_matrix()
-
-        right_hand_side = np.array([np.exp(1j * self.wave_number * np.dot(angle_to_vec(incident_angle), self.locations[i]))
-                                    for i in range(self.num_scatterers)])
-
-        if born_approx:
-            solution = right_hand_side
-        else:
-            solution = np.linalg.solve(self.foldy_matrix, right_hand_side)
-
-        return solution
+    def solve_foldy_systems(self, incident_angles, born_approx=False):
+        return solve_foldy_systems(self.locations, self.amplitudes, self.wave_number, incident_angles, born_approx)
 
     def compute_total_field(self, incident_angle, x, born_approx=False):
         """
@@ -127,7 +147,7 @@ class PointScatteringProblem:
         # TODO: allow to pass an array with shape (2,) as input for x?
         assert x.ndim == 2 and x.shape[1] == 2
 
-        foldy_solution = self.solve_fold_system(incident_angle, born_approx=born_approx)
+        foldy_solution = self.solve_foldy_systems(jnp.array([incident_angle]), born_approx=born_approx)
 
         num_eval_points = len(x)
         res = np.array([np.exp(1j * self.wave_number * np.dot(angle_to_vec(incident_angle), x[i]))
@@ -157,18 +177,5 @@ class PointScatteringProblem:
         np.array, shape (N,)
             Values of the far field pattern for each incident angle and observation direction
         """
-        # TODO: allow to pass an array with shape (2,) as input for x?
-        assert incident_angles.ndim == 1 and observation_directions.ndim == 1
-        assert len(incident_angles) == len(observation_directions)
-
-        n = len(incident_angles)
-        res = np.zeros(n, dtype='complex_')
-
-        for i in range(n):
-            foldy_solution = self.solve_fold_system(incident_angles[i], born_approx=born_approx)
-
-            for k in range(self.num_scatterers):
-                dot_aux = np.dot(angle_to_vec(observation_directions[i]), self.locations[k])
-                res[i] += self.amplitudes[k] * np.exp(-1j * self.wave_number * dot_aux) * foldy_solution[k]
-
-        return res
+        return compute_far_field(self.locations, self.amplitudes, self.wave_number,
+                                 incident_angles, observation_directions, born_approx=born_approx)
