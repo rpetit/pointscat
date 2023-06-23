@@ -6,7 +6,6 @@ from itertools import product
 from celer import Lasso
 
 from .forward_problem import compute_far_field
-from .forward_problem import angle_to_vec
 
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -108,7 +107,7 @@ def find_argmax_abs(f, box_size, grid_size):
     solver = jaxopt.ScipyBoundedMinimize(fun=signed_f, method="l-bfgs-b")
     params, state = solver.run(argmax_abs_grid, bounds=(-box_size/2 * jnp.ones(2), box_size/2 * jnp.ones(2)))
 
-    return params
+    return params, jnp.abs(state.fun_val)
 
 
 def compute_fourier_transform(locations, amplitudes, frequencies):
@@ -217,6 +216,7 @@ class DiscreteMeasure:
     def perform_sliding(self, frequencies, measurements, reg_param, box_size):
         # TODO: implement spike merging
         # TODO: write doc
+        # TODO: conic particle gradient descent?
         num_spikes = self.num_spikes
 
         def sliding_obj(x):
@@ -245,6 +245,7 @@ class DiscreteMeasure:
     def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size):
         # TODO: implement spike merging
         # TODO: write doc
+        # TODO: conic particle gradient descent?
         num_spikes = self.num_spikes
 
         def sliding_obj(x):
@@ -287,8 +288,9 @@ def zero_measure():
     return DiscreteMeasure(locations, amplitudes)
 
 
-# TODO implement stopping criterion
-def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_size=100):
+# TODO: test stopping criterion
+# TODO: write doc
+def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_size=100, convergence_tol=1e-3):
     measure = zero_measure()
 
     for i in range(num_iter):
@@ -297,7 +299,12 @@ def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_
         def eta(x):
             return trigo_poly(x, frequencies, residual)
 
-        new_location = find_argmax_abs(eta, box_size, grid_size)
+        new_location, max_abs_value = find_argmax_abs(eta, box_size, grid_size)
+
+        # stopping criterion
+        if max_abs_value / reg_param <= 1 + convergence_tol:
+            return measure
+
         measure.add_spike(new_location)
 
         measure.fit_weights(frequencies, observations, reg_param)

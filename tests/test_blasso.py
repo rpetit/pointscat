@@ -112,15 +112,15 @@ def test_find_argmax():
     assert f(argmax_1) < 2 - tol_1
 
     # test grid + local search (maximum of absolute value of f should be 4)
-    argmax_abs_1 = find_argmax_abs(f, box_size, 5)
-    assert np.abs(f(argmax_abs_1)) > 4 - tol_2
+    argmax_abs_1, max_abs_1 = find_argmax_abs(f, box_size, 5)
+    assert max_abs_1 > 4 - tol_2
 
     # test that multiplying f by -1 does not change the result
     def g(x):
         return -f(x)
 
-    argmax_abs_2 = find_argmax_abs(g, box_size, 5)
-    assert np.abs(f(argmax_abs_1)) == np.abs(f(argmax_abs_2))
+    argmax_abs_2, max_abs_2 = find_argmax_abs(g, box_size, 5)
+    assert max_abs_1 == max_abs_2
 
 
 def test_sliding():

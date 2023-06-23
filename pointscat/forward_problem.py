@@ -1,4 +1,3 @@
-import numpy as np
 import jax.numpy as jnp
 
 from .hankel import h0
@@ -33,17 +32,23 @@ def green_function(wave_number, x, y):
     ----------
     wave_number: float
         The wave number
-    x: np.array, shape (2,)
-        First evaluation point
-    y: np.array, shape (2,)
-        Second evaluation point
+    x: array, shape (2,) or (N, 2)
+        First evaluation point, or list of first evaluation points
+    y: np.array, shape (2,) or (M, 2)
+        Second evaluation point, or list of second evaluation points
 
     Returns
     -------
-    complex
-        Value of the Green function at (x, y)
+    complex or array, shape (N, M)
+        Value of the Green function at (x, y) or values at (x[i], y[j]) for every (i,j)
     """
-    return 1j/4 * h0(wave_number * jnp.linalg.norm(x-y))
+    assert jnp.ndim(x) == jnp.ndim(y)
+    assert x.shape[-1] == y.shape[-1] == 2
+
+    if jnp.ndim(x) == 1:
+        return 1j/4 * h0(wave_number * jnp.linalg.norm(x-y))
+    else:
+        return 1j/4 * h0(wave_number * jnp.linalg.norm(x[:, jnp.newaxis] - y[jnp.newaxis, :], axis=-1))
 
 
 def compute_foldy_matrix(locations, amplitudes, wave_number):
@@ -80,7 +85,7 @@ def solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, bor
     array, shape (N,M)
         The j-th column is the solution of the Foldy system associated to the incident wave defined by incident_angles[j]
     """
-    # compute and inverse Foldy matrix
+    # compute and invert Foldy matrix
     foldy_matrix = compute_foldy_matrix(locations, amplitudes, wave_number)
     inv_foldy_matrix = jnp.linalg.inv(foldy_matrix)
 
@@ -96,6 +101,21 @@ def solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, bor
         solutions = jnp.dot(inv_foldy_matrix, right_hand_sides)
 
     return solutions
+
+
+def compute_total_field(locations, amplitudes, wave_number, incident_angle, x, born_approx=False):
+    # TODO: allow to pass an array with shape (2,) as input for x?
+    # TODO: replace incident_angle by incident_angles
+    assert x.ndim == 2 and x.shape[1] == 2
+
+    foldy_solutions = solve_foldy_systems(locations, amplitudes, wave_number, jnp.array([incident_angle]),
+                                          born_approx=born_approx)
+    foldy_solution = foldy_solutions[0]  # extract first coordinate
+
+    res = jnp.exp(1j * wave_number * jnp.dot(x, angle_to_vec(incident_angle)))
+    res += jnp.dot(green_function(wave_number, x, locations), amplitudes * foldy_solution)
+
+    return res
 
 
 def compute_far_field(locations, amplitudes, wave_number, incident_angles, observations_directions, born_approx=False):
@@ -119,6 +139,8 @@ class PointScatteringProblem:
         self.amplitudes = amplitudes
         self.wave_number = wave_number
 
+        self.foldy_matrix = None
+
     @property
     def num_scatterers(self):
         return len(self.amplitudes)
@@ -134,30 +156,18 @@ class PointScatteringProblem:
         ----------
         incident_angle: float
             The incident angle (should be between 0 and 2*pi)
-        x: np.array, shape (N, 2)
+        x: array, shape (N, 2)
             The list of points at which the total field should be evaluated
         born_approx: bool
             Whether to use Born approximation, defaut False (no approximation)
 
         Returns
         -------
-        np.array, shape (N,)
+        array, shape (N,)
             Value of the total field associated to the incident wave with angle incident_angle evaluated at each x[i]
         """
-        # TODO: allow to pass an array with shape (2,) as input for x?
-        assert x.ndim == 2 and x.shape[1] == 2
-
-        foldy_solution = self.solve_foldy_systems(jnp.array([incident_angle]), born_approx=born_approx)
-
-        num_eval_points = len(x)
-        res = np.array([np.exp(1j * self.wave_number * np.dot(angle_to_vec(incident_angle), x[i]))
-                        for i in range(num_eval_points)])
-
-        for i in range(num_eval_points):
-            for j in range(self.num_scatterers):
-                res[i] += self.amplitudes[j] * green_function(self.wave_number, self.locations[j], x[i]) * foldy_solution[j]
-
-        return res
+        return compute_total_field(self.locations, self.amplitudes, self.wave_number, incident_angle, x,
+                                   born_approx=born_approx)
 
     def compute_far_field(self, incident_angles, observation_directions, born_approx=False):
         """

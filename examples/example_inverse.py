@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 from pointscat.forward_problem import angle_to_vec, PointScatteringProblem
 from pointscat.inverse_problem import unif_sample_disk, DiscreteMeasure, solve_blasso
@@ -7,14 +8,15 @@ from pointscat.inverse_problem import unif_sample_disk, DiscreteMeasure, solve_b
 np.random.seed(0)
 
 # setting problem
-amplitudes = 1 * np.array([1, 1, 1])
-locations = 0.15 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6]])
+amplitudes = 1 * np.array([1, 2, 1, 0.5, 3, 1, 0.6, 2])
+locations = 0.4 * np.array([[-4.3, -4.7], [-4.0, 4.5], [4.2, 3.6], [0, 0], [2.5, 2.1], [-1.2, 3.4],
+                            [-1/0.4, 1/0.4], [1/0.4, -1/0.4]])
 wave_number = 1
 point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
 
 # far field computation
-box_size = 0.2 * 10  # locations should belong to (-# box_size/2,box_size/2)
-num_frequencies = 100
+box_size = 0.4 * 10  # locations should belong to (-# box_size/2,box_size/2)
+num_frequencies = 25
 cutoff_frequency = 2 * wave_number
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 
@@ -52,7 +54,7 @@ print(measure.locations)
 
 # computation of the BLASSO estimator under Born approx
 reg_param = 0.1
-num_iter = 3
+num_iter = 8
 
 print("computation of the BLASSO estimator under Born approx...")
 obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
@@ -72,4 +74,29 @@ print(estimated_measure.amplitudes)
 
 print("estimated locations:")
 print(estimated_measure.locations)
+
+fig = plt.figure(figsize=plt.figaspect(3.))
+
+ax = fig.add_subplot(1, 1, 1, projection='3d')
+
+markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes)
+
+stemlines.set_color('black')
+markerline.set_color('black')
+baseline.set_linestyle('none')
+
+markerline, stemlines, baseline = ax.stem(estimated_measure.locations[:, 0],
+                                          estimated_measure.locations[:, 1],
+                                          estimated_measure.amplitudes)
+
+stemlines.set_color('red')
+markerline.set_color('red')
+baseline.set_linestyle('none')
+
+ax.set_xlim(-1.1*box_size/2, 1.1*box_size/2)
+ax.set_ylim(-1.1*box_size/2, 1.1*box_size/2)
+ax.set_title('Unknown and \nestimated measures')
+
+fig.tight_layout()
+plt.show()
 

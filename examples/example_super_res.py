@@ -37,7 +37,7 @@ noisy_observations = observations + noise
 noisy_fourier_series = lambda x: trigo_poly(x, frequencies, noisy_observations)
 
 reg_param = 0.25 * np.sqrt(2 * np.log(len(observations))) * std_noise
-num_iter = 2
+num_iter = 10
 box_size = 2
 estimated_measure = solve_blasso(frequencies, observations, reg_param, num_iter, box_size)
 
@@ -57,6 +57,7 @@ v_abs_max = max(np.max(np.abs(f_grid)), np.max(np.abs(noisy_f_grid)))
 
 colormap = 'bwr'
 
+# TODO: refactor into plotting utility functions?
 fig = plt.figure(figsize=plt.figaspect(3.))
 
 ax = fig.add_subplot(3, 1, 1, projection='3d')

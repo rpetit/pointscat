@@ -1,7 +1,8 @@
+import numpy as np
 import jax.numpy as jnp
 
 from pointscat.forward_problem import angle_to_vec, green_function
-from pointscat.forward_problem import compute_foldy_matrix, solve_foldy_systems, compute_far_field
+from pointscat.forward_problem import compute_foldy_matrix, solve_foldy_systems, compute_far_field, compute_total_field
 from pointscat.forward_problem import PointScatteringProblem
 
 from jax.config import config
@@ -39,6 +40,7 @@ def test_foldy_matrix():
     assert jnp.allclose(jnp.diagonal(foldy_mat), 1)
 
 
+# TODO: test Born
 def test_foldy_resolution():
     amplitudes = jnp.array([1, 2, 0.5])
     locations = jnp.array([[0, 0], [-1, 1], [0, 1]])
@@ -57,6 +59,25 @@ def test_foldy_resolution():
     assert jnp.allclose(jnp.dot(foldy_mat, foldy_sols), right_hand_sides)
 
 
+# TODO: test Born
+def test_total_field():
+    amplitudes = jnp.array([1, 2, 0.5])
+    locations = jnp.array([[0, 0], [-1, 1], [0, 1]])
+    wave_number = 1
+
+    incident_angle = jnp.pi/4
+
+    num_points = 10
+    x_tab = np.linspace(-1, 1, num_points)
+    X, Y = np.meshgrid(x_tab, x_tab)
+    x = np.vstack([X.flatten(), Y.flatten()]).T
+
+    total_field = compute_total_field(locations, amplitudes, wave_number, incident_angle, x)
+
+    assert total_field.shape == (num_points**2,)
+
+
+# TODO: test Born
 def test_far_field():
     amplitudes = jnp.array([1, 2, 0.5])
     locations = jnp.array([[0, 0], [-1, 1], [0, 1]])
@@ -65,7 +86,6 @@ def test_far_field():
     num_obs = 10
     incident_angles = jnp.linspace(0, 2 * jnp.pi, num_obs)
     observation_directions = jnp.linspace(0, 2*jnp.pi, num_obs)
-    incident_angles_vec = angle_to_vec(incident_angles)
 
     far_field = compute_far_field(locations, amplitudes, wave_number, incident_angles, observation_directions)
 
@@ -82,22 +102,23 @@ def test_point_scattering_problem():
     wave_number = 1
 
     # test class constructor
-    scat_prob = PointScatteringProblem(wave_number, amplitudes, locations)
+    scat_prob = PointScatteringProblem(locations, amplitudes, wave_number)
 
     assert scat_prob.num_scatterers == 1
 
-    # test Foldy matrix computation
-    scat_prob.compute_foldy_matrix()
-
-    assert scat_prob.foldy_matrix.shape == (1, 1)
-    assert np.iscomplexobj(scat_prob.foldy_matrix)
+    # # test Foldy matrix computation TODO: cleanup
+    # scat_prob.compute_foldy_matrix()
+    #
+    # assert scat_prob.foldy_matrix.shape == (1, 1)
+    # assert np.iscomplexobj(scat_prob.foldy_matrix)
 
     # test Foldy system resolution (with and without Born approximation)
-    foldy_sol = scat_prob.solve_foldy_system(0)
-    foldy_sol_born = scat_prob.solve_foldy_system(0, born_approx=True)
+    incident_angles = np.array([0])
+    foldy_sol = scat_prob.solve_foldy_systems(incident_angles)
+    foldy_sol_born = scat_prob.solve_foldy_systems(incident_angles, born_approx=True)
 
-    assert len(foldy_sol) == 1 and len(foldy_sol_born) == 1
-    assert foldy_sol[0] == 1 and foldy_sol_born[0] == 1
+    assert len(foldy_sol[0]) == 1 and len(foldy_sol_born[0]) == 1
+    assert foldy_sol[0, 0] == 1 and foldy_sol_born[0, 0] == 1
 
     # test total field computation
     x = np.array([[0.2, 0.2], [0.2, 0.2]])
