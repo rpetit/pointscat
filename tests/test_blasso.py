@@ -51,6 +51,46 @@ def test_discrete_measure():
     measure.add_spike(new_location)
     assert measure.num_spikes == 3
 
+    # test drop spikes
+    locations = np.array([[0, 0], [1, 0], [0, 1]])
+    amplitudes = np.array([0.05, 1, -0.5])
+    measure = DiscreteMeasure(locations, amplitudes)
+
+    tol = 0.01
+    measure.drop_spikes(tol)
+    assert measure.num_spikes == 3
+    assert np.allclose(measure.locations, locations)
+    assert np.allclose(measure.amplitudes, amplitudes)
+
+    tol = 0.1
+    measure.drop_spikes(tol)
+
+    assert measure.num_spikes == 2
+    assert np.allclose(measure.locations, np.array([[1, 0], [0, 1]]))
+    assert np.allclose(measure.amplitudes, np.array([1, -0.5]))
+
+    # test merge spike pairs
+    locations = np.array([[0, 0], [0.1, 0.2], [1, -1]])
+    amplitudes = np.array([1, -2, 1])
+    measure = DiscreteMeasure(locations, amplitudes)
+    measure.merge_spike_pair(0, 1)
+
+    assert measure.num_spikes == 2
+    assert np.allclose(measure.locations, np.array([[0.05, 0.1], [1, -1]]))
+    assert np.allclose(measure.amplitudes, np.array([-1, 1]))
+
+    # test merge spikes
+    locations = np.array([[0, 0], [0.01, 0.01], [1, -1], [-0.01, -0.01]])
+    amplitudes = np.array([1, -2, 1, 3])
+    measure = DiscreteMeasure(locations, amplitudes)
+    tol = 0.1
+    measure.merge_spikes(tol)
+
+    assert measure.num_spikes == 2
+    assert np.allclose(measure.amplitudes, np.array([2, 1]))
+    assert np.linalg.norm(measure.locations[0] - np.array([0, 0])) < tol
+    assert np.allclose(measure.locations[1], locations[2])
+
     # test Fourier transform computation
     measure = zero_measure()
     frequencies = np.array([[0, 0], [1, -1]])
@@ -66,6 +106,12 @@ def test_discrete_measure():
     assert np.isclose(ft[1], 0)
     assert np.isclose(ft[2], 2)
     assert np.isclose(ft[3], -2)
+
+    # test linearity of Fourier transform computation (amplitude multiplied by -2
+    measure = DiscreteMeasure(np.array([[0, 1]]), np.array([-4]))
+    frequencies = np.array([[np.pi / 2, np.pi / 2], [np.pi / 2, -np.pi / 2]])
+    new_ft = measure.compute_fourier_transform(frequencies)
+    assert np.allclose(ft * (-2), new_ft)
 
 
 def test_fit_weights():

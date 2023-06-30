@@ -15,7 +15,7 @@ wave_number = 1
 point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
 
 # far field computation
-box_size = 0.4 * 10  # locations should belong to (-# box_size/2,box_size/2)
+box_size = 0.4 * 10  # locations should belong to (-box_size/2,box_size/2)
 num_frequencies = 25
 cutoff_frequency = 2 * wave_number
 frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)

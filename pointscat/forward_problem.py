@@ -54,10 +54,11 @@ def green_function(wave_number, x, y):
 def compute_foldy_matrix(locations, amplitudes, wave_number):
     # TODO: write doc
     # TODO: test sign of off-diagonal coefficients (the minus was missing before, and tests still passed)
+    # TODO: test again, amplitudes were missing and tests still passed
     num_scatterers = len(amplitudes)
     assert amplitudes.ndim == 1 and locations.shape == (num_scatterers, 2)
 
-    foldy_mat = jnp.array([[-wave_number**2 * green_function(wave_number, locations[i], locations[j]) if i != j else 1
+    foldy_mat = jnp.array([[-wave_number**2 * amplitudes[j] * green_function(wave_number, locations[i], locations[j]) if i != j else 1
                             for j in range(num_scatterers)] for i in range(num_scatterers)], dtype='complex64')
 
     return foldy_mat
@@ -118,13 +119,13 @@ def compute_total_field(locations, amplitudes, wave_number, incident_angle, x, b
     return res
 
 
-def compute_far_field(locations, amplitudes, wave_number, incident_angles, observations_directions, born_approx=False):
+def compute_far_field(locations, amplitudes, wave_number, incident_angles, observation_directions, born_approx=False):
     # TODO: write doc
     foldy_sols = solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, born_approx)
 
     # compute the matrix whose (i,j)-th coefficient is the inner product between locations[i]
-    # and observations_directions[j]
-    dot_prod = jnp.dot(locations, angle_to_vec(observations_directions).T)
+    # and observation_directions[j]
+    dot_prod = jnp.dot(locations, angle_to_vec(observation_directions).T)
 
     return jnp.sum(amplitudes[:, jnp.newaxis] * jnp.exp(-1j * wave_number * dot_prod) * foldy_sols, axis=0)
 
@@ -139,11 +140,12 @@ class PointScatteringProblem:
         self.amplitudes = amplitudes
         self.wave_number = wave_number
 
-        self.foldy_matrix = None
-
     @property
     def num_scatterers(self):
         return len(self.amplitudes)
+
+    def compute_foldy_matrix(self):
+        return compute_foldy_matrix(self.locations, self.amplitudes, self.wave_number)
 
     def solve_foldy_systems(self, incident_angles, born_approx=False):
         return solve_foldy_systems(self.locations, self.amplitudes, self.wave_number, incident_angles, born_approx)

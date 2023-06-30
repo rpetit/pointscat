@@ -179,6 +179,68 @@ class DiscreteMeasure:
         self.locations = np.vstack((self.locations, new_location))
         self.amplitudes = np.append(self.amplitudes, 0)
 
+    def drop_spikes(self, tol):
+        """
+        Drop all spikes whose amplitude is in absolute value smaller than some tolerance
+
+        Parameters
+        ----------
+        tol: float
+            Amplitude threshold below which spikes are discarded
+        """
+        to_keep = np.where(np.abs(self.amplitudes) > tol)
+        self.amplitudes = self.amplitudes[to_keep]
+        self.locations = self.locations[to_keep]
+
+    def merge_spike_pair(self, i, j):
+        """
+        Merge a pair of spikes by summing amplitudes and averaging locations
+
+        Parameters
+        ----------
+        i: int
+            Index of first spike
+        j: int
+            Index of second spike
+        """
+        new_location = 0.5 * (self.locations[i] + self.locations[j])
+        new_amplitude = self.amplitudes[i] + self.amplitudes[j]
+
+        new_locations = np.delete(self.locations, j, axis=0)
+        new_locations[i, :] = new_location
+        new_amplitudes = np.delete(self.amplitudes, j)
+        new_amplitudes[i] = new_amplitude
+
+        self.locations = new_locations
+        self.amplitudes = new_amplitudes
+
+    def merge_spikes(self, tol):
+        """
+        Merge all spikes whose locations have a distance smaller than some tolerance
+
+        Parameters
+        ----------
+        tol: float
+            Distance threshold below which spikes are merged
+        """
+        merging_done = False
+
+        while not merging_done:
+            merging_done = True
+            i = 0
+
+            while i < self.num_spikes and merging_done:
+                j = i + 1
+
+                while j < self.num_spikes and merging_done:
+                    if np.linalg.norm(self.locations[i] - self.locations[j]) < tol:
+                        merging_done = False
+                        self.merge_spike_pair(i, j)
+                    else:
+                        j += 1
+
+                i += 1
+
     def compute_fourier_transform(self, frequencies):
         """
         See compute_fourier_transform
@@ -196,7 +258,7 @@ class DiscreteMeasure:
         """
         return compute_fourier_transform(self.locations, self.amplitudes, frequencies)
 
-    def fit_weights(self, frequencies, observations, reg_param, tol_factor=1e-4):
+    def fit_weights(self, frequencies, observations, reg_param, tol_amplitudes=None, tol_factor_celer=1e-4):
         # TODO: write doc
         # TODO: remove spikes with amplitude below some threshold
         dot_prod_array = np.dot(frequencies, self.locations.T)
@@ -204,16 +266,20 @@ class DiscreteMeasure:
         measurement_mat_imag = np.sin(dot_prod_array)
         measurement_mat = np.vstack([measurement_mat_real, measurement_mat_imag])
 
-        tol = tol_factor * np.linalg.norm(observations) ** 2 / observations.size
+        tol_celer = tol_factor_celer * np.linalg.norm(observations) ** 2 / observations.size
 
-        lasso = Lasso(alpha=reg_param/observations.size, fit_intercept=False, tol=tol)
+        lasso = Lasso(alpha=reg_param/observations.size, fit_intercept=False, tol=tol_celer)
         # TODO: investigate why setting jax_enable_x64 to True raises a "buffer source array is read-only" error if
         # observations is not converted to numpy array
         lasso.fit(measurement_mat, np.array(observations))
 
         self.amplitudes = lasso.coef_
 
-    def perform_sliding(self, frequencies, measurements, reg_param, box_size):
+        # drop spikes whose amplitudes are in absolute value smaller than tol_amplitudes
+        if tol_amplitudes is not None:
+            self.drop_spikes(tol_amplitudes)
+
+    def perform_sliding(self, frequencies, measurements, reg_param, box_size, tol_locations=None, tol_amplitudes=None):
         # TODO: implement spike merging
         # TODO: write doc
         # TODO: conic particle gradient descent?
@@ -242,7 +308,14 @@ class DiscreteMeasure:
         self.amplitudes = new_amplitudes
         self.locations = new_locations
 
-    def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size):
+        if tol_amplitudes is not None:
+            self.drop_spikes(tol_amplitudes)
+
+        if tol_locations is not None:
+            self.merge_spikes(tol_locations)
+
+    def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size,
+                                  tol_locations=None, tol_amplitudes=None):
         # TODO: implement spike merging
         # TODO: write doc
         # TODO: conic particle gradient descent?
@@ -265,13 +338,21 @@ class DiscreteMeasure:
 
         bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
 
-        solver = jaxopt.ScipyBoundedMinimize(fun=sliding_obj, method="l-bfgs-b")
+        solver = jaxopt.LBFGSB(fun=sliding_obj, maxiter=1)
         params, state = solver.run(x_0, bounds=(-bounds, bounds))
 
         new_amplitudes = params[:self.num_spikes]
         new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
         self.amplitudes = new_amplitudes
         self.locations = new_locations
+
+        if tol_amplitudes is not None:
+            self.drop_spikes(tol_amplitudes)
+
+        if tol_locations is not None:
+            self.merge_spikes(tol_locations)
+
+        return state
 
 
 def zero_measure():
@@ -290,7 +371,8 @@ def zero_measure():
 
 # TODO: test stopping criterion
 # TODO: write doc
-def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_size=100, convergence_tol=1e-3):
+def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_size=100, convergence_tol=1e-3,
+                 tol_locations=None, tol_amplitudes=None):
     measure = zero_measure()
 
     for i in range(num_iter):
@@ -307,7 +389,8 @@ def solve_blasso(frequencies, observations, reg_param, num_iter, box_size, grid_
 
         measure.add_spike(new_location)
 
-        measure.fit_weights(frequencies, observations, reg_param)
-        measure.perform_sliding(frequencies, observations, reg_param, box_size)
+        measure.fit_weights(frequencies, observations, reg_param, tol_amplitudes=tol_amplitudes)
+        measure.perform_sliding(frequencies, observations, reg_param, box_size,
+                                tol_locations=tol_locations, tol_amplitudes=tol_amplitudes)
 
     return measure

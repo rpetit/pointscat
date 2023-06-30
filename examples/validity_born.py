@@ -12,75 +12,104 @@ plt.rcParams.update({
     'text.latex.preamble': r'\usepackage{amsfonts}'
 })
 
-wave_number = 2
-amplitudes = np.array([3, 3, 3])
+wave_number = 1
+fig, ax = plt.subplots(figsize=(13, 8))
 
-num_draws = 500  # number of configuration draws
-eval_grid_size = 100  # number of indicent angles and observations directions
-num_scatterers = len(amplitudes)
 
-incident_angles = np.linspace(0, 2 * np.pi, eval_grid_size)
-observation_directions = np.linspace(0, 2 * np.pi, eval_grid_size)
+def run_exp(params):
+    if params['amplitude_choice'] == 'same':
+        amplitude = params['amplitude']
+        amplitudes = amplitude * np.ones(2)
 
-min_sep_dist_tab = []
-smallest_sval_tab = []
-one_norm_minus_id_tab = []
-rel_err_tab = []
+    if params['amplitude_choice'] == 'different':
+        amplitudes = params['amplitudes']
 
-for i in range(num_draws):
-    # drawing of the locations of the scatterers
-    locations = 10 * np.random.random((num_scatterers, 2)) - 1
+    num_draws = 10  # number of configuration draws
+    num_measurements = 100  # number of indicent angles and observations directions
 
-    # minimal separation distance computation
-    min_sep_dist = np.linalg.norm(locations[0] - locations[1])
-    min_sep_dist = min(min_sep_dist, np.linalg.norm(locations[0] - locations[2]))
-    min_sep_dist = min(min_sep_dist, np.linalg.norm(locations[1] - locations[2]))
-    min_sep_dist_tab.append(min_sep_dist)
+    incident_angles = 2 * np.pi * np.random.random(num_measurements)
+    observation_directions = 2 * np.pi * np.random.random(num_measurements)
 
-    point_scat = PointScatteringProblem(wave_number, amplitudes, locations)
+    dist_tab = np.linspace(0.1, 20, 100)
+    err_tab = []
+    mean_err_tab = []
+    std_err_tab = []
 
-    # computation of Foldy matrix and related quantities
-    smallest_sval, one_norm_minus_id = point_scat.compute_foldy_matrix(output=True)
-    smallest_sval_tab.append(smallest_sval)
-    one_norm_minus_id_tab.append(one_norm_minus_id)
+    for i in range(len(dist_tab)):
+        # drawing of the locations of the scatterers
+        first_locations = 2 * np.random.random((num_draws, 2)) - 1
+        angles = 2 * np.pi * np.random.random(num_draws)
+        second_locations = first_locations + dist_tab[i] * np.stack([np.cos(angles), np.sin(angles)], axis=1)
+        err_tab_i = []
 
-    # far field computation (with and without Born approximation)
-    far_field_born = point_scat.compute_far_field(incident_angles, observation_directions, born_approx=True)
-    far_field = point_scat.compute_far_field(incident_angles, observation_directions)
+        for j in range(num_draws):
+            locations = np.vstack([first_locations[j], second_locations[j]])
+            assert np.isclose(np.linalg.norm(first_locations[j] - second_locations[j]), dist_tab[i])
 
-    # computation of the relative error on the (discretized) far field
-    rel_err = np.linalg.norm(far_field - far_field_born) / np.linalg.norm(far_field)
-    rel_err_tab.append(rel_err)
+            point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
 
-# computation of the theoretical upper bound on the error
-min_sep_dist_grid = np.linspace(np.min(min_sep_dist_tab), np.max(min_sep_dist_tab), 100)
-aux = wave_number ** 2 * num_scatterers * np.max(amplitudes) / (4 * np.pi)
-th_bound_grid = aux * (aux / min_sep_dist_grid) / (1 - aux / min_sep_dist_grid)
+            # far field computation (with and without Born approximation)
+            far_field_born = point_scat.compute_far_field(incident_angles, observation_directions, born_approx=True)
+            far_field = point_scat.compute_far_field(incident_angles, observation_directions)
 
-# plot relative error with respect to minimal separation distance
-# TODO: fix because of change in compute_far_field
-fig, axs = plt.subplots(3, 1, figsize=(7, 21))
+            # computation of the relative error on the (discretized) far field
+            err = np.linalg.norm(far_field - far_field_born) / np.sqrt(num_measurements) * (2*np.pi)
+            err_tab_i.append(err)
 
-axs[0].scatter(min_sep_dist_tab, rel_err_tab, marker='.')
-# axs[0].plot(min_sep_dist_grid, th_bound_grid, color='red')
+        err_tab.append(err_tab_i)
+        mean_err_tab.append(np.mean(err_tab_i))
+        std_err_tab.append(np.std(err_tab_i))
 
-axs[0].set_xlabel('minimal separation distance')
-axs[0].set_ylabel('relative error')
-axs[0].set_title('relative error on the far field pattern')
+    # computation of the theoretical upper bound on the error
+    green_function_val = np.array([green_function(wave_number, np.array([0, 0]), dist_tab[i] * np.array([1, 0]))
+                                   for i in range(len(dist_tab))])
+    mean_amp = 0.5 * (amplitudes[0] + amplitudes[1])
+    geom_mean_amp = np.sqrt(amplitudes[0] * amplitudes[1])
+    aux = wave_number**2 * geom_mean_amp * green_function_val
+    th_bound = 4*np.pi * np.abs(aux) / np.abs(1 - aux**2) * (np.abs(aux) * mean_amp + geom_mean_amp)
+    # TODO: investigate
+    # th_bound_bis = 2 * np.abs(aux) / (1-np.abs(aux))
 
-axs[1].scatter(min_sep_dist_tab, smallest_sval_tab, marker='.')
-axs[1].hlines(0, np.min(min_sep_dist_tab), np.max(min_sep_dist_tab), linestyle='--', color='black')
+    # plot relative error with respect to minimal separation distance
+    ax.plot(dist_tab, mean_err_tab,
+            color=params['color'],
+            label=r'emp. err. ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
 
-axs[1].set_xlabel('minimal separation distance')
-axs[1].set_ylabel('smallest singular value')
-axs[1].set_title('smallest singular value of Foldy matrix')
+    ax.fill_between(dist_tab, np.array(mean_err_tab) - 3*np.array(std_err_tab),
+                    np.array(mean_err_tab) + 3*np.array(std_err_tab),
+                    color=params['color'], alpha=0.2)
 
-axs[2].scatter(min_sep_dist_tab, one_norm_minus_id_tab, marker='.')
-axs[2].hlines(1, np.min(min_sep_dist_tab), np.max(min_sep_dist_tab), linestyle='--', color='black')
+    ax.plot(dist_tab, th_bound,
+            color=params['color'],
+            linestyle='--',
+            label=r'th. bound. ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
 
-axs[2].set_xlabel('minimal separation distance')
-axs[2].set_ylabel('one-norm')
-axs[2].set_title('one-norm of Foldy matrix minus identity')
+    # ax.plot(dist_tab, th_bound_bis, color='green', linestyle='--', label='theoretical bound bis')
+    # axs[0].set_yscale('log')
+
+
+params = {'amplitude_choice': 'same', 'amplitude': 1, 'color': 'red'}
+run_exp(params)
+
+params = {'amplitude_choice': 'same', 'amplitude': 3, 'color': 'blue'}
+run_exp(params)
+
+params = {'amplitude_choice': 'same', 'amplitude': 0.1, 'color': 'green'}
+run_exp(params)
+
+params = {'amplitude_choice': 'different', 'amplitudes': np.array([1, 2]), 'color': 'purple'}
+run_exp(params)
+
+params = {'amplitude_choice': 'different', 'amplitudes': np.array([0.1, 1]), 'color': 'black'}
+run_exp(params)
+
+# final plot formatting
+ax.set_yscale('log')
+ax.set_xlabel('distance')
+ax.set_ylabel('relative error')
+ax.set_title('relative error on the far field pattern')
+
+ax.legend(bbox_to_anchor=(1.04, 1), borderaxespad=0)
 
 fig.suptitle('validity of Born approximation')
 fig.tight_layout()
