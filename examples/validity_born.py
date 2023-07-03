@@ -67,8 +67,9 @@ def run_exp(params):
     geom_mean_amp = np.sqrt(amplitudes[0] * amplitudes[1])
     aux = wave_number**2 * geom_mean_amp * green_function_val
     th_bound = 4*np.pi * np.abs(aux) / np.abs(1 - aux**2) * (np.abs(aux) * mean_amp + geom_mean_amp)
-    # TODO: investigate
-    # th_bound_bis = 2 * np.abs(aux) / (1-np.abs(aux))
+
+    bound_lambda = wave_number**2 * np.max(amplitudes) / (4 * np.sqrt(wave_number * dist_tab))
+    th_bound_bis = 4*np.pi * np.max(amplitudes) * bound_lambda / (1 - bound_lambda)
 
     # plot relative error with respect to minimal separation distance
     ax.plot(dist_tab, mean_err_tab,
@@ -83,6 +84,11 @@ def run_exp(params):
             color=params['color'],
             linestyle='--',
             label=r'th. bound. ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
+
+    ax.plot(dist_tab, th_bound_bis,
+            color=params['color'],
+            linestyle='-.',
+            label=r'th. bound. bis ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
 
     # ax.plot(dist_tab, th_bound_bis, color='green', linestyle='--', label='theoretical bound bis')
     # axs[0].set_yscale('log')
