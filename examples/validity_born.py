@@ -85,10 +85,10 @@ def run_exp(params):
             linestyle='--',
             label=r'th. bound. ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
 
-    ax.plot(dist_tab, th_bound_bis,
-            color=params['color'],
-            linestyle='-.',
-            label=r'th. bound. bis ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
+    # ax.plot(dist_tab, th_bound_bis,
+    #         color=params['color'],
+    #         linestyle='-.',
+    #         label=r'th. bound. bis ($a_1={},~a_2={}$)'.format(amplitudes[0], amplitudes[1]))
 
     # ax.plot(dist_tab, th_bound_bis, color='green', linestyle='--', label='theoretical bound bis')
     # axs[0].set_yscale('log')
