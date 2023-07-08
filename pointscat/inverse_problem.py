@@ -315,7 +315,7 @@ class DiscreteMeasure:
             self.merge_spikes(tol_locations)
 
     def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size,
-                                  tol_locations=None, tol_amplitudes=None):
+                                  reg_param=0, tol_locations=None, tol_amplitudes=None):
         # TODO: implement spike merging
         # TODO: write doc
         # TODO: conic particle gradient descent?
@@ -329,7 +329,7 @@ class DiscreteMeasure:
             far_field = compute_far_field(locations, amplitudes, wave_number, incident_angles, observation_directions)
             image = jnp.concatenate([jnp.real(far_field), -jnp.imag(far_field)])  # TODO: fix ugly
 
-            return jnp.sum((image - measurements)**2) / 2
+            return jnp.sum((image - measurements)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
         # vector of initial parameters
         # TODO: fix ugly conversion
@@ -338,7 +338,7 @@ class DiscreteMeasure:
 
         bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
 
-        solver = jaxopt.LBFGSB(fun=sliding_obj, maxiter=1)
+        solver = jaxopt.LBFGSB(fun=sliding_obj)
         params, state = solver.run(x_0, bounds=(-bounds, bounds))
 
         new_amplitudes = params[:self.num_spikes]

@@ -1,6 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
 
+from pointscat.hankel import h0
 from pointscat.forward_problem import angle_to_vec, green_function
 from pointscat.forward_problem import compute_foldy_matrix, solve_foldy_systems, compute_far_field, compute_total_field
 from pointscat.forward_problem import PointScatteringProblem
@@ -29,15 +30,17 @@ def test_green_function():
 
 
 def test_foldy_matrix():
-    amplitudes = jnp.array([1, 2, 0.5])
+    amplitudes = jnp.array([1, 2, 2])
     locations = jnp.array([[0, 0], [-1, 1], [0, 1]])
-    wave_number = 1
+    wave_number = 2
 
     foldy_mat = compute_foldy_matrix(locations, amplitudes, wave_number)
 
     assert foldy_mat.shape == (len(amplitudes), len(amplitudes))
     assert jnp.iscomplexobj(foldy_mat)
     assert jnp.allclose(jnp.diagonal(foldy_mat), 1)
+    assert foldy_mat[1, 2] == foldy_mat[2, 1]  # holds because amplitudes[1] == amplitudes[2]
+    assert foldy_mat[0, 1] == -wave_number**2 * 1j/4 * h0(wave_number * np.linalg.norm(locations[0] - locations[1])) * amplitudes[1]
 
 
 # TODO: test Born
@@ -105,12 +108,6 @@ def test_point_scattering_problem():
     scat_prob = PointScatteringProblem(locations, amplitudes, wave_number)
 
     assert scat_prob.num_scatterers == 1
-
-    # # test Foldy matrix computation TODO: cleanup
-    # scat_prob.compute_foldy_matrix()
-    #
-    # assert scat_prob.foldy_matrix.shape == (1, 1)
-    # assert np.iscomplexobj(scat_prob.foldy_matrix)
 
     # test Foldy system resolution (with and without Born approximation)
     incident_angles = np.array([0])

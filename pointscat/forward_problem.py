@@ -58,8 +58,11 @@ def compute_foldy_matrix(locations, amplitudes, wave_number):
     num_scatterers = len(amplitudes)
     assert amplitudes.ndim == 1 and locations.shape == (num_scatterers, 2)
 
-    foldy_mat = jnp.array([[-wave_number**2 * amplitudes[j] * green_function(wave_number, locations[i], locations[j]) if i != j else 1
-                            for j in range(num_scatterers)] for i in range(num_scatterers)], dtype='complex64')
+    diff = locations[:, jnp.newaxis, :] - locations[jnp.newaxis, :, :]
+    safe_diff = diff + jnp.stack([jnp.eye(num_scatterers), jnp.zeros((num_scatterers, num_scatterers))], axis=-1)
+    norm = jnp.linalg.norm(safe_diff, axis=-1)
+    foldy_mat = -wave_number**2 * 1j/4 * (h0(wave_number * norm) - h0(wave_number) * jnp.eye(num_scatterers))
+    foldy_mat = jnp.dot(foldy_mat, jnp.diag(amplitudes)) + jnp.eye(len(amplitudes))
 
     return foldy_mat
 
