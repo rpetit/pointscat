@@ -140,8 +140,6 @@ def compute_fourier_transform(locations, amplitudes, frequencies):
     return jnp.concatenate([ft_real, ft_imag])
 
 
-# TODO: deal with spikes at same location
-# TODO: deal with representation of locations (points on the torus)
 # TODO: deal with complex amplitudes (sklearn and celer do not like complex numbers)?
 class DiscreteMeasure:
     """
@@ -260,7 +258,6 @@ class DiscreteMeasure:
 
     def fit_weights(self, frequencies, observations, reg_param, tol_amplitudes=None, tol_factor_celer=1e-4):
         # TODO: write doc
-        # TODO: remove spikes with amplitude below some threshold
         dot_prod_array = np.dot(frequencies, self.locations.T)
         measurement_mat_real = np.cos(dot_prod_array)
         measurement_mat_imag = np.sin(dot_prod_array)
@@ -280,7 +277,6 @@ class DiscreteMeasure:
             self.drop_spikes(tol_amplitudes)
 
     def perform_sliding(self, frequencies, measurements, reg_param, box_size, tol_locations=None, tol_amplitudes=None):
-        # TODO: implement spike merging
         # TODO: write doc
         # TODO: conic particle gradient descent?
         num_spikes = self.num_spikes
@@ -295,13 +291,18 @@ class DiscreteMeasure:
 
         # vector of initial parameters
         # TODO: fix ugly conversion
-        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float64'),
-                               jnp.array(self.locations.flatten(), dtype='float64')])
+        amplitudes = jnp.array(self.amplitudes, dtype='float64')
+        locations = jnp.array(self.locations.flatten(), dtype='float64')
+        x_0 = jnp.concatenate([amplitudes, locations])
 
-        bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
+        lower_bounds_amplitudes = jnp.where(amplitudes > 0, 0, -jnp.inf)
+        upper_bounds_amplitudes = jnp.where(amplitudes < 0, 0, jnp.inf)
+        bound_locations = box_size/2 * jnp.ones(2*num_spikes)
+        lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
+        upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
 
         solver = jaxopt.ScipyBoundedMinimize(fun=sliding_obj, method="l-bfgs-b")
-        params, state = solver.run(x_0, bounds=(-bounds, bounds))
+        params, state = solver.run(x_0, bounds=(lower_bounds, upper_bounds))
 
         new_amplitudes = params[:self.num_spikes]
         new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
@@ -316,7 +317,6 @@ class DiscreteMeasure:
 
     def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size,
                                   reg_param=0, tol_locations=None, tol_amplitudes=None):
-        # TODO: implement spike merging
         # TODO: write doc
         # TODO: conic particle gradient descent?
         num_spikes = self.num_spikes
@@ -332,14 +332,18 @@ class DiscreteMeasure:
             return jnp.sum((image - measurements)**2) / 2 + reg_param * jnp.sum(jnp.abs(amplitudes))
 
         # vector of initial parameters
-        # TODO: fix ugly conversion
-        x_0 = jnp.concatenate([jnp.array(self.amplitudes, dtype='float64'),
-                               jnp.array(self.locations.flatten(), dtype='float64')])
+        amplitudes = jnp.array(self.amplitudes, dtype='float64')
+        locations = jnp.array(self.locations.flatten(), dtype='float64')
+        x_0 = jnp.concatenate([amplitudes, locations])
 
-        bounds = jnp.concatenate([jnp.inf * jnp.ones(num_spikes), box_size/2 * jnp.ones(2*num_spikes)])
+        lower_bounds_amplitudes = jnp.where(amplitudes > 0, 0, -jnp.inf)
+        upper_bounds_amplitudes = jnp.where(amplitudes < 0, 0, jnp.inf)
+        bound_locations = box_size/2 * jnp.ones(2*num_spikes)
+        lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
+        upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
 
         solver = jaxopt.LBFGSB(fun=sliding_obj)
-        params, state = solver.run(x_0, bounds=(-bounds, bounds))
+        params, state = solver.run(x_0, bounds=(lower_bounds, upper_bounds))
 
         new_amplitudes = params[:self.num_spikes]
         new_locations = np.reshape(params[self.num_spikes:], (self.num_spikes, 2))
