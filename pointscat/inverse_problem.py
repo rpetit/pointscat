@@ -297,6 +297,8 @@ class DiscreteMeasure:
 
         lower_bounds_amplitudes = jnp.where(amplitudes > 0, 0, -jnp.inf)
         upper_bounds_amplitudes = jnp.where(amplitudes < 0, 0, jnp.inf)
+        # TODO: remove temp hack
+        # bound_locations = jnp.inf * jnp.ones(2 * num_spikes)
         bound_locations = box_size/2 * jnp.ones(2*num_spikes)
         lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
         upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
@@ -338,6 +340,8 @@ class DiscreteMeasure:
 
         lower_bounds_amplitudes = jnp.where(amplitudes > 0, 0, -jnp.inf)
         upper_bounds_amplitudes = jnp.where(amplitudes < 0, 0, jnp.inf)
+        # TODO: remove temp hack
+        # bound_locations = jnp.inf * jnp.ones(2 * num_spikes)
         bound_locations = box_size/2 * jnp.ones(2*num_spikes)
         lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
         upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
@@ -353,6 +357,7 @@ class DiscreteMeasure:
         if tol_amplitudes is not None:
             self.drop_spikes(tol_amplitudes)
 
+        # TODO: stop doing this, the problem is nonlinear here!
         if tol_locations is not None:
             self.merge_spikes(tol_locations)
 

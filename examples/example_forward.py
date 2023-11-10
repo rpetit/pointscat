@@ -7,15 +7,15 @@ from pointscat import *
 plt.rcParams.update({
     'font.family': 'serif',
     'font.serif': ['+Computer Modern'],
-    'font.size': 20,
+    'font.size': 35,
     'text.usetex': True,
     'text.latex.preamble': r'\usepackage{amsfonts}'
 })
 
 
 # setting problem
-amplitudes = 0.5 * np.array([3, 3, 3])
-locations = 0.5 * np.array([[-1.6, -0.2], [2.2, 1.6], [2.4, -1.7]])
+amplitudes = 0.8 * np.array([3, 3, 3])
+locations = 1.5 * np.array([[-1.6, -0.2], [2.2, 1.6], [2.4, -1.7]])
 # amplitudes = np.array([3, 3, 3])
 # locations = np.array([[-1.0, 0.0], [1.0, 0.0], [2.0, 2.0]])
 wave_number = 2
@@ -48,8 +48,30 @@ diff_scattered_field = scattered_field_born - scattered_field
 # TODO: wrap into plot util functions?
 # TODO: plot scatterers
 colormap = 'bwr'
-vmin = -2.2
-vmax = 2.2
+vmin = -2.3
+vmax = 2.3
+
+###
+
+fig, ax = plt.subplots(figsize=(7, 7))
+im = ax.imshow(np.real(incident_wave), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
+ax.axis('off')
+fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+plt.savefig("in_field.png", bbox_inches='tight', dpi=300)
+
+fig, ax = plt.subplots(figsize=(7, 7))
+im = ax.imshow(np.real(scattered_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
+ax.axis('off')
+fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+plt.savefig("scat_field.png", bbox_inches='tight', dpi=300)
+
+fig, ax = plt.subplots(figsize=(7, 7))
+im = ax.imshow(np.real(total_field), origin='lower', vmin=vmin, vmax=vmax, cmap=colormap)
+ax.axis('off')
+fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+plt.savefig("tot_field.png", bbox_inches='tight', dpi=300)
+
+###
 
 # plot incident wave
 fig, axs = plt.subplots(1, 2, figsize=(14, 7))

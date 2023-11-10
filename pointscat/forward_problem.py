@@ -58,18 +58,19 @@ def compute_foldy_matrix(locations, amplitudes, wave_number):
     num_scatterers = len(amplitudes)
     assert amplitudes.ndim == 1 and locations.shape == (num_scatterers, 2)
 
+    # ugly workaround to avoid differentiability issues. TODO: find something better
     diff = locations[:, jnp.newaxis, :] - locations[jnp.newaxis, :, :]
     safe_diff = diff + jnp.stack([jnp.eye(num_scatterers), jnp.zeros((num_scatterers, num_scatterers))], axis=-1)
     norm = jnp.linalg.norm(safe_diff, axis=-1)
     foldy_mat = -wave_number**2 * 1j/4 * (h0(wave_number * norm) - h0(wave_number) * jnp.eye(num_scatterers))
-    foldy_mat = jnp.dot(foldy_mat, jnp.diag(amplitudes)) + jnp.eye(len(amplitudes))
+    foldy_mat = jnp.dot(foldy_mat, jnp.diag(amplitudes)) + jnp.eye(len(amplitudes))  # TODO: fix and doc
 
     return foldy_mat
 
 
 def solve_foldy_systems(locations, amplitudes, wave_number, incident_angles, born_approx=False):
     """
-    Solve the Foldy system associated to a set of incident angles
+    Solve the Foldy systems associated to a set of incident angles
 
     Parameters
     ----------

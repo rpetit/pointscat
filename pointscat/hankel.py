@@ -127,5 +127,8 @@ def y0(x):
     return jnp.where(jnp.abs(x) < 4.0, y0_small(jnp.abs(x)), y0_large(jnp.abs(x)))
 
 
+EPSILON = 1e-5  # correction constant to avoid the explosion of y0 at zero
+
+
 def h0(x):
-    return j0(x) + 1j * y0(x)
+    return j0(x) + 1j * y0(EPSILON + x)  # TODO: fix explosion issue to avoid trick
