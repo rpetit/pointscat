@@ -4,6 +4,7 @@ import jaxopt
 
 from itertools import product
 from celer import Lasso
+from ot.partial import partial_wasserstein2
 
 from .forward_problem import compute_far_field
 
@@ -303,7 +304,7 @@ class DiscreteMeasure:
         lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
         upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
 
-        solver = jaxopt.ScipyBoundedMinimize(fun=sliding_obj, method="l-bfgs-b")
+        solver = jaxopt.LBFGSB(fun=sliding_obj, maxiter=1000, tol=1e-5)
         params, state = solver.run(x_0, bounds=(lower_bounds, upper_bounds))
 
         new_amplitudes = params[:self.num_spikes]
@@ -318,7 +319,7 @@ class DiscreteMeasure:
             self.merge_spikes(tol_locations)
 
     def perform_nonlinear_sliding(self, incident_angles, observation_directions, measurements, wave_number, box_size,
-                                  reg_param=0, tol_locations=None, tol_amplitudes=None):
+                                  reg_param=0, tol_amplitudes=None):
         # TODO: write doc
         # TODO: conic particle gradient descent?
         num_spikes = self.num_spikes
@@ -346,7 +347,8 @@ class DiscreteMeasure:
         lower_bounds = jnp.concatenate([lower_bounds_amplitudes, -bound_locations])
         upper_bounds = jnp.concatenate([upper_bounds_amplitudes, bound_locations])
 
-        solver = jaxopt.LBFGSB(fun=sliding_obj)
+        # TODO: input maximum number of iterations as a parameter
+        solver = jaxopt.LBFGSB(fun=sliding_obj, maxiter=5000, tol=1e-5)
         params, state = solver.run(x_0, bounds=(lower_bounds, upper_bounds))
 
         new_amplitudes = params[:self.num_spikes]
@@ -356,10 +358,6 @@ class DiscreteMeasure:
 
         if tol_amplitudes is not None:
             self.drop_spikes(tol_amplitudes)
-
-        # TODO: stop doing this, the problem is nonlinear here!
-        if tol_locations is not None:
-            self.merge_spikes(tol_locations)
 
         return state
 
@@ -376,6 +374,14 @@ def zero_measure():
     locations = np.empty((0, 2))
     amplitudes = np.empty(0)
     return DiscreteMeasure(locations, amplitudes)
+
+
+def partial_ot(measure_1, measure_2):
+    a = measure_1.amplitudes
+    b = measure_2.amplitudes
+    M = np.linalg.norm(measure_1.locations[:, np.newaxis, :] - measure_2.locations[np.newaxis, :], axis=-1)
+
+    return partial_wasserstein2(a, b, M)
 
 
 # TODO: test stopping criterion

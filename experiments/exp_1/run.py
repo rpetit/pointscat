@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pointscat.forward_problem import PointScatteringProblem
+from pointscat.forward_problem import PointScatteringProblem, compute_far_field
 from pointscat.inverse_problem import unif_sample_disk, DiscreteMeasure, solve_blasso
 
 
@@ -16,145 +16,126 @@ plt.rcParams.update({
 })
 
 # setting problem
-amplitudes = np.array([1.2, 2.3, 1.9])
-locations = np.array([[-0.25, 0.925], [-1.5, -1.0], [1.5, -0.5]])
+amplitudes = np.array([1, 1])
+ref_locations = np.array([[-0.5, 0.0], [0.5, 0.0]])
 wave_number = 1
 
-point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
-measure = DiscreteMeasure(locations, amplitudes)
+box_size = 5
 
-box_size = 5  # locations should belong to (-box_size/2,box_size/2)
+sep_dist_tab = [2, 1.5, 1, 0.5, 0.2]
 
-# display unknown measure
-fig = plt.figure(figsize=(6, 6))
+for i in range(len(sep_dist_tab)):
+    sep_dist = sep_dist_tab[i]
+    locations = sep_dist * ref_locations
 
-ax = fig.add_subplot(1, 1, 1, projection='3d')
+    point_scat = PointScatteringProblem(locations, amplitudes, wave_number)
+    measure = DiscreteMeasure(locations, amplitudes)
 
-markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes, label='unknown')
+    # far field computation
+    num_frequencies = 15
+    cutoff_frequency = 2 * wave_number
+    frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
 
-stemlines.set_color('black')
-markerline.set_color('black')
-baseline.set_linestyle('none')
+    incident_angles = np.array([np.pi + np.angle(k[0] + 1j * k[1]) - np.arccos(np.linalg.norm(k) / (2 * wave_number))
+                                for k in frequencies])
+    observation_directions = np.array([np.angle(k[0] + 1j * k[1]) + np.arccos(np.linalg.norm(k) / (2 * wave_number))
+                                       for k in frequencies])
 
-ax.set_xlim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_ylim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_zlim(0, 2.2)
+    far_field = point_scat.compute_far_field(incident_angles, observation_directions)
+    far_field_born = point_scat.compute_far_field(incident_angles, observation_directions, born_approx=True)
 
-plt.show()
-# plt.savefig('meas_1.png', bbox_inches='tight', transparent=True, dpi=300)
+    # observations
+    obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
+    born_obs = np.concatenate([np.real(far_field_born), -np.imag(far_field_born)])
 
-# far field computation
-num_frequencies = 30
-cutoff_frequency = 2 * wave_number
-frequencies = unif_sample_disk(num_frequencies, cutoff_frequency)
+    # parameters
+    reg_param_lin = 0.5
+    reg_param_nonlin = 0.001
+    tol_locations = 1e-3
+    tol_amplitudes = 0.1
 
-incident_angles = np.array([np.pi + np.angle(k[0]+1j*k[1]) - np.arccos(np.linalg.norm(k)/(2*wave_number))
-                            for k in frequencies])
-observation_directions = np.array([np.angle(k[0]+1j*k[1]) + np.arccos(np.linalg.norm(k)/(2*wave_number))
-                                   for k in frequencies])
+    # computation of the BLASSO estimator under Born approx
+    num_iter = 10
 
-far_field = point_scat.compute_far_field(incident_angles, observation_directions)
-far_field_born = point_scat.compute_far_field(incident_angles, observation_directions, born_approx=True)
+    estimated_measure = solve_blasso(frequencies, obs, reg_param_lin, num_iter, box_size,
+                                     tol_locations=tol_locations, tol_amplitudes=tol_amplitudes)
 
-# observations
-obs = np.concatenate([np.real(far_field), -np.imag(far_field)])
-born_obs = np.concatenate([np.real(far_field_born), -np.imag(far_field_born)])
+    # display output of linear step
+    fig = plt.figure(figsize=(6, 6))
 
-print("L2 norm of observations:")
-print(np.linalg.norm(obs))
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
 
-print("relative L2 error between true far field and Born approximation:")
-print(np.linalg.norm(obs - born_obs) / np.linalg.norm(obs))
+    markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes, label='unknown')
 
-print("absolute L2 error between true far field and Born approximation:")
-print(np.linalg.norm(obs - born_obs))
+    stemlines.set_color('black')
+    markerline.set_color('black')
+    baseline.set_linestyle('none')
 
-std_noise = 0.25
-noise = np.random.normal(scale=std_noise, size=obs.shape)
-noisy_obs = obs + noise
+    markerline, stemlines, baseline = ax.stem(estimated_measure.locations[:, 0],
+                                              estimated_measure.locations[:, 1],
+                                              estimated_measure.amplitudes,
+                                              label='estimated')
 
-print("relative L2 noise level")
-print(np.linalg.norm(noise) / np.linalg.norm(obs))
+    stemlines.set_color('blue')
+    markerline.set_color('blue')
+    baseline.set_linestyle('none')
 
-# parameters
-reg_param = 3.0
-tol_locations = 0.05
-tol_amplitudes = 0.01
+    ax.set_xlim(-1.1 * box_size / 2, 1.1 * box_size / 2)
+    ax.set_ylim(-1.1 * box_size / 2, 1.1 * box_size / 2)
+    ax.set_zlim(0, 2.1)
 
-# computation of the BLASSO estimator under Born approx
-num_iter = 10
+    plt.show()
 
-print("computation of the BLASSO estimator under Born approx...")
-estimated_measure = solve_blasso(frequencies, noisy_obs, reg_param, num_iter, box_size,
-                                 tol_locations=tol_locations, tol_amplitudes=tol_amplitudes)
+    print("nonlinear sliding...")
+    state = estimated_measure.perform_nonlinear_sliding(incident_angles, observation_directions,
+                                                        obs, wave_number,
+                                                        box_size, reg_param=reg_param_nonlin,
+                                                        tol_amplitudes=tol_amplitudes)
 
-# display output of linear step
-fig = plt.figure(figsize=(6, 6))
+    print("estimated amplitudes:")
+    print(estimated_measure.amplitudes)
 
-ax = fig.add_subplot(1, 1, 1, projection='3d')
+    print("estimated locations:")
+    print(estimated_measure.locations)
 
-markerline, stemlines, baseline = ax.stem(estimated_measure.locations[:, 0],
-                                          estimated_measure.locations[:, 1],
-                                          estimated_measure.amplitudes,
-                                          label='estimated')
+    print("number of iterations:")
+    print(state.iter_num)
 
-stemlines.set_color('blue')
-stemlines.set_alpha(0.5)
-markerline.set_color('blue')
-markerline.set_alpha(0.5)
-baseline.set_linestyle('none')
+    print("infinity norm of the gradient of the objective:")
+    print(np.max(np.abs(state.grad)))
 
-markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes, label='unknown')
+    print("relative l2 error on the observations:")
+    estimated_far_field = compute_far_field(estimated_measure.locations,
+                                            estimated_measure.amplitudes,
+                                            wave_number,
+                                            incident_angles,
+                                            observation_directions)
+    estimated_obs = np.concatenate([np.real(estimated_far_field), -np.imag(estimated_far_field)])
+    print(np.linalg.norm(obs - estimated_obs) / np.linalg.norm(obs))
 
-stemlines.set_color('black')
-markerline.set_color('black')
-baseline.set_linestyle('none')
+    # display output of nonlinear step
+    fig = plt.figure(figsize=(6, 6))
 
-ax.set_xlim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_ylim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_zlim(0, 2.2)
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
 
-# plt.show()
-plt.savefig('lin_est_1.png', bbox_inches='tight', transparent=True, dpi=300)
+    markerline, stemlines, baseline = ax.stem(estimated_measure.locations[:, 0],
+                                              estimated_measure.locations[:, 1],
+                                              estimated_measure.amplitudes)
 
-# nonlinear sliding step
-print("nonlinear sliding...")
-state = estimated_measure.perform_nonlinear_sliding(incident_angles, observation_directions,
-                                                    noisy_obs, wave_number,
-                                                    box_size, reg_param=reg_param,
-                                                    tol_locations=tol_locations,
-                                                    tol_amplitudes=tol_amplitudes)
+    stemlines.set_color('red')
+    markerline.set_color('red')
+    baseline.set_linestyle('none')
 
-print("estimated amplitudes:")
-print(estimated_measure.amplitudes)
+    markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes, label='unknown')
 
-print("estimated locations:")
-print(estimated_measure.locations)
+    stemlines.set_color('black')
+    stemlines.set_alpha(0.7)
+    markerline.set_color('black')
+    markerline.set_alpha(0.7)
+    baseline.set_linestyle('none')
 
-# display output of nonlinear step
-fig = plt.figure(figsize=(6, 6))
+    ax.set_xlim(-1.1 * box_size / 2, 1.1 * box_size / 2)
+    ax.set_ylim(-1.1 * box_size / 2, 1.1 * box_size / 2)
+    ax.set_zlim(0, 2.1)
 
-ax = fig.add_subplot(1, 1, 1, projection='3d')
-
-markerline, stemlines, baseline = ax.stem(estimated_measure.locations[:, 0],
-                                          estimated_measure.locations[:, 1],
-                                          estimated_measure.amplitudes)
-
-stemlines.set_color('red')
-stemlines.set_alpha(0.5)
-markerline.set_color('red')
-markerline.set_alpha(0.5)
-baseline.set_linestyle('none')
-
-markerline, stemlines, baseline = ax.stem(locations[:, 0], locations[:, 1], amplitudes)
-
-stemlines.set_color('black')
-markerline.set_color('black')
-baseline.set_linestyle('none')
-
-ax.set_xlim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_ylim(-1.1*box_size/2, 1.1*box_size/2)
-ax.set_zlim(0, 2.2)
-
-# plt.show()
-plt.savefig('nonlin_est_1.png', bbox_inches='tight', transparent=True, dpi=300)
+    plt.show()

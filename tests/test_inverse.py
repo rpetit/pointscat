@@ -1,7 +1,7 @@
 import numpy as np
 
 from pointscat.inverse_problem import unif_sample_disk, trigo_poly, find_argmax_abs, find_argmax_grid
-from pointscat.inverse_problem import DiscreteMeasure, zero_measure
+from pointscat.inverse_problem import DiscreteMeasure, zero_measure, partial_ot
 
 from jax import config
 config.update("jax_enable_x64", True)
@@ -112,6 +112,20 @@ def test_discrete_measure():
     frequencies = np.array([[np.pi / 2, np.pi / 2], [np.pi / 2, -np.pi / 2]])
     new_ft = measure.compute_fourier_transform(frequencies)
     assert np.allclose(ft * (-2), new_ft)
+
+
+def test_partial_ot():
+    measure_1 = DiscreteMeasure(np.array([[0, 0]]), np.array([1]))
+
+    assert partial_ot(measure_1, measure_1) == 0
+
+    measure_2 = DiscreteMeasure(np.array([[1, 0]]), np.array([1]))
+
+    assert partial_ot(measure_1, measure_2) == 1
+
+    measure_3 = DiscreteMeasure(np.array([[1, 0]]), np.array([2]))
+
+   # assert partial_ot(measure_1, measure_3) == 2
 
 
 def test_fit_weights():

@@ -130,5 +130,5 @@ def y0(x):
 EPSILON = 1e-5  # correction constant to avoid the explosion of y0 at zero
 
 
-def h0(x):
-    return j0(x) + 1j * y0(EPSILON + x)  # TODO: fix explosion issue to avoid trick
+def h0(x, epsilon=EPSILON):
+    return j0(x) + 1j * y0(epsilon + x)  # TODO: fix explosion issue to avoid trick

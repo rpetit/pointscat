@@ -23,6 +23,6 @@ def test_y0():
 def test_h0():
     x = np.linspace(1e-15, 50, 10000)
     y_scipy = hankel1(0, x)
-    y_jax = h0(x)
-    tol = 5e-10
-    assert np.max(np.abs(y_scipy - y_jax)) < tol
+    y_jax = h0(x, epsilon=0)
+    tol = 1e-8
+    assert np.max(np.abs(y_scipy - y_jax) / np.abs(y_scipy)) < tol

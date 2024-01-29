@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 setup(name='pointscat',
-      install_requires=['numpy', 'scipy', 'celer', 'jax', 'jaxopt'],
+      install_requires=['numpy', 'scipy', 'celer', 'jax', 'jaxopt', 'pot'],
       description="Localization of point scatterers",
       packages=['pointscat']
       )
